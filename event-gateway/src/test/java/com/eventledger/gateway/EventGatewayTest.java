@@ -15,6 +15,9 @@ import org.springframework.test.context.DynamicPropertyRegistry;
 import org.springframework.test.context.DynamicPropertySource;
 import org.springframework.test.web.servlet.MockMvc;
 
+import java.util.concurrent.CountDownLatch;
+import java.util.concurrent.Executors;
+
 import static com.github.tomakehurst.wiremock.client.WireMock.aResponse;
 import static com.github.tomakehurst.wiremock.client.WireMock.equalTo;
 import static com.github.tomakehurst.wiremock.client.WireMock.matching;
@@ -118,6 +121,59 @@ class EventGatewayTest {
                 .andExpect(status().isOk())
                 .andExpect(jsonPath("$[0].eventId").value("evt-failed"));
         ACCOUNT_SERVICE.verify(2, postRequestedFor(urlEqualTo("/accounts/acct-123/transactions")));
+    }
+
+    @Test
+    void balanceProxyReturns503WhenAccountServiceFails() throws Exception {
+        ACCOUNT_SERVICE.stubFor(com.github.tomakehurst.wiremock.client.WireMock.get(
+                        urlEqualTo("/accounts/acct-123/balance"))
+                .willReturn(aResponse().withStatus(503)));
+
+        mockMvc.perform(get("/accounts/acct-123/balance"))
+                .andExpect(status().isServiceUnavailable())
+                .andExpect(jsonPath("$.code").value("ACCOUNT_SERVICE_UNAVAILABLE"));
+    }
+
+    @Test
+    void identicalResubmissionRecoversAPreviouslyFailedEvent() throws Exception {
+        ACCOUNT_SERVICE.stubFor(com.github.tomakehurst.wiremock.client.WireMock.post(
+                        urlPathMatching("/accounts/.+/transactions"))
+                .willReturn(aResponse().withStatus(503)));
+        submit("evt-recovery", "CREDIT", "25", "2026-05-15T14:00:00Z")
+                .andExpect(status().isServiceUnavailable());
+
+        circuitBreakerRegistry.circuitBreaker("accountService").reset();
+        ACCOUNT_SERVICE.resetAll();
+        stubSuccessfulApply();
+        submit("evt-recovery", "CREDIT", "25.0", "2026-05-15T14:00:00Z")
+                .andExpect(status().isOk())
+                .andExpect(jsonPath("$.status").value("APPLIED"));
+
+        assertThat(eventRepository.count()).isEqualTo(1);
+    }
+
+    @Test
+    void concurrentDuplicatesCreateOneGatewayEvent() throws Exception {
+        stubSuccessfulApply();
+        var ready = new CountDownLatch(2);
+        var start = new CountDownLatch(1);
+        try (var executor = Executors.newFixedThreadPool(2)) {
+            var request = (java.util.concurrent.Callable<Integer>) () -> {
+                ready.countDown();
+                start.await();
+                return submit("evt-concurrent", "CREDIT", "30", "2026-05-15T14:00:00Z")
+                        .andReturn().getResponse().getStatus();
+            };
+            var first = executor.submit(request);
+            var second = executor.submit(request);
+            ready.await();
+            start.countDown();
+
+            assertThat(java.util.List.of(first.get(), second.get()))
+                    .containsExactlyInAnyOrder(201, 200);
+        }
+
+        assertThat(eventRepository.count()).isEqualTo(1);
     }
 
     @Test

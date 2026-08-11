@@ -43,10 +43,10 @@ public class EventLedgerService {
     public SubmissionResult submit(EventRequest request) {
         var canonical = fingerprint.canonicalize(request);
         var existingEvent = eventRepository.findById(request.eventId());
-        boolean newSubmission = existingEvent.isEmpty();
-        EventEntity event = existingEvent
-                .map(existing -> verifyDuplicate(existing, canonical.hash()))
+        PendingResult pending = existingEvent
+                .map(existing -> new PendingResult(verifyDuplicate(existing, canonical.hash()), false))
                 .orElseGet(() -> createPending(request, canonical));
+        EventEntity event = pending.event();
 
         if (event.getProcessingStatus() == ProcessingStatus.APPLIED) {
             count("duplicate");
@@ -61,7 +61,7 @@ public class EventLedgerService {
             log.atInfo().addKeyValue("eventId", event.getEventId())
                     .addKeyValue("accountId", event.getAccountId())
                     .log("Event applied by Account Service");
-            return new SubmissionResult(toResponse(event), newSubmission);
+            return new SubmissionResult(toResponse(event), pending.created());
         } catch (CallNotPermittedException exception) {
             event.markFailed(clock.instant(), "Account Service circuit breaker is open");
             saveAfterAttempt(event);
@@ -88,15 +88,15 @@ public class EventLedgerService {
                 .stream().map(this::toResponse).toList();
     }
 
-    private EventEntity createPending(EventRequest request, PayloadFingerprint.CanonicalPayload canonical) {
+    private PendingResult createPending(EventRequest request, PayloadFingerprint.CanonicalPayload canonical) {
         var createdAt = clock.instant();
         var candidate = new EventEntity(request.eventId(), request.accountId(), request.type(), request.amount(),
                 canonical.currency(), request.eventTimestamp(), canonical.metadataJson(), canonical.hash(), createdAt);
         try {
-            return eventRepository.saveAndFlush(candidate);
+            return new PendingResult(eventRepository.saveAndFlush(candidate), true);
         } catch (DataIntegrityViolationException race) {
             EventEntity winner = eventRepository.findById(request.eventId()).orElseThrow(() -> race);
-            return verifyDuplicate(winner, canonical.hash());
+            return new PendingResult(verifyDuplicate(winner, canonical.hash()), false);
         }
     }
 
@@ -128,5 +128,8 @@ public class EventLedgerService {
     }
 
     public record SubmissionResult(EventResponse response, boolean created) {
+    }
+
+    private record PendingResult(EventEntity event, boolean created) {
     }
 }

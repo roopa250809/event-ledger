@@ -10,6 +10,10 @@ import org.springframework.boot.test.context.SpringBootTest;
 import org.springframework.http.MediaType;
 import org.springframework.test.web.servlet.MockMvc;
 
+import java.util.concurrent.CountDownLatch;
+import java.util.concurrent.Executors;
+
+import static org.assertj.core.api.Assertions.assertThat;
 import static org.springframework.test.web.servlet.request.MockMvcRequestBuilders.get;
 import static org.springframework.test.web.servlet.request.MockMvcRequestBuilders.post;
 import static org.springframework.test.web.servlet.result.MockMvcResultMatchers.header;
@@ -64,6 +68,32 @@ class AccountControllerTest {
         mockMvc.perform(get("/accounts/acct-123/balance"))
                 .andExpect(status().isOk())
                 .andExpect(jsonPath("$.balance").value(50.0));
+    }
+
+    @Test
+    void concurrentDuplicatesAreAppliedOnlyOnce() throws Exception {
+        var ready = new CountDownLatch(2);
+        var start = new CountDownLatch(1);
+        try (var executor = Executors.newFixedThreadPool(2)) {
+            var request = (java.util.concurrent.Callable<Integer>) () -> {
+                ready.countDown();
+                start.await();
+                return submit("evt-concurrent", "CREDIT", "40.00", "2026-05-15T14:00:00Z")
+                        .andReturn().getResponse().getStatus();
+            };
+            var first = executor.submit(request);
+            var second = executor.submit(request);
+            ready.await();
+            start.countDown();
+
+            assertThat(java.util.List.of(first.get(), second.get()))
+                    .containsExactlyInAnyOrder(201, 200);
+        }
+
+        mockMvc.perform(get("/accounts/acct-123/balance"))
+                .andExpect(status().isOk())
+                .andExpect(jsonPath("$.balance").value(40.0));
+        assertThat(transactionRepository.count()).isEqualTo(1);
     }
 
     @Test

@@ -98,6 +98,10 @@ public class AccountServiceClient {
             meterRegistry.counter("account.service.calls", "operation", operation, "outcome", "rejected")
                     .increment();
             throw exception;
+        } catch (AccountServiceUnavailableException exception) {
+            meterRegistry.counter("account.service.calls", "operation", operation, "outcome", "unavailable")
+                    .increment();
+            throw exception;
         } catch (ResourceAccessException exception) {
             meterRegistry.counter("account.service.calls", "operation", operation, "outcome", "unavailable")
                     .increment();
