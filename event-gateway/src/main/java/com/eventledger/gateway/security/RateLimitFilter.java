@@ -24,6 +24,7 @@ import java.util.Map;
 import java.util.concurrent.ConcurrentHashMap;
 import java.util.concurrent.atomic.AtomicLong;
 
+/** Enforces a per-client fixed-window request limit. */
 @Component
 public class RateLimitFilter extends OncePerRequestFilter {
     private static final long WINDOW_SECONDS = 60;
@@ -96,6 +97,7 @@ public class RateLimitFilter extends OncePerRequestFilter {
                 "details", List.of()));
     }
 
+    /** Maintains request counts for one fixed time window. */
     private static final class Window {
         private long startedAt;
         private int used;
@@ -121,6 +123,7 @@ public class RateLimitFilter extends OncePerRequestFilter {
         }
     }
 
+    /** Captures the result of a rate-limit evaluation. */
     private record Decision(boolean allowed, int remaining, long retryAfterSeconds) {
     }
 }

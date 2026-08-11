@@ -7,6 +7,7 @@ import jakarta.persistence.Table;
 
 import java.time.Instant;
 
+/** Persists an account's identity, currency, and creation time. */
 @Entity
 @Table(name = "accounts")
 public class AccountEntity {

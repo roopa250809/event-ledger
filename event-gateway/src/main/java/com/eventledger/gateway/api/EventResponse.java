@@ -7,6 +7,7 @@ import java.math.BigDecimal;
 import java.time.Instant;
 import java.util.Map;
 
+/** Represents a stored event and its processing status. */
 public record EventResponse(
         String eventId,
         String accountId,

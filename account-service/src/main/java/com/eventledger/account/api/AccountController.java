@@ -15,6 +15,7 @@ import org.springframework.web.bind.annotation.RequestMapping;
 import org.springframework.web.bind.annotation.RequestParam;
 import org.springframework.web.bind.annotation.RestController;
 
+/** Exposes internal transaction and account query endpoints. */
 @RestController
 @RequestMapping("/accounts")
 @Validated

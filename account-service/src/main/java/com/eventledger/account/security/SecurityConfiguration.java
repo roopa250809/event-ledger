@@ -19,6 +19,7 @@ import java.time.Instant;
 import java.util.List;
 import java.util.Map;
 
+/** Secures all Account Service routes for authenticated service calls. */
 @Configuration
 public class SecurityConfiguration {
     @Bean

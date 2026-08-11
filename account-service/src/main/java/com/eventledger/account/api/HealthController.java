@@ -10,6 +10,7 @@ import org.springframework.web.bind.annotation.RestController;
 import java.time.Instant;
 import java.util.Map;
 
+/** Reports Account Service and database health. */
 @RestController
 public class HealthController {
     private final JdbcTemplate jdbcTemplate;

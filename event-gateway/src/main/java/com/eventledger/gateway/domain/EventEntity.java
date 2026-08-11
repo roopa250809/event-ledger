@@ -12,6 +12,7 @@ import jakarta.persistence.Version;
 import java.math.BigDecimal;
 import java.time.Instant;
 
+/** Persists an event and its downstream processing state. */
 @Entity
 @Table(name = "events", indexes = {
         @Index(name = "idx_event_account_time", columnList = "account_id,event_timestamp,event_id")

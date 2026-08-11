@@ -12,6 +12,7 @@ import org.springframework.web.bind.annotation.RequestMapping;
 import org.springframework.web.bind.annotation.RequestParam;
 import org.springframework.web.bind.annotation.RestController;
 
+/** Exposes authenticated account queries through the public Gateway. */
 @RestController
 @RequestMapping("/accounts")
 @Validated

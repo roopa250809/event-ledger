@@ -25,6 +25,7 @@ import java.time.Clock;
 import java.time.Instant;
 import java.util.List;
 
+/** Applies idempotent transactions and calculates account state. */
 @Service
 public class AccountLedgerService {
     private static final Logger log = LoggerFactory.getLogger(AccountLedgerService.class);
@@ -151,6 +152,7 @@ public class AccountLedgerService {
         return value == null ? BigDecimal.ZERO : value;
     }
 
+    /** Couples a transaction response with its creation outcome. */
     public record ApplyResult(TransactionResponse response, boolean created) {
     }
 }

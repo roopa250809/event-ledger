@@ -12,6 +12,7 @@ import java.time.Instant;
 import java.util.LinkedHashMap;
 import java.util.Map;
 
+/** Reports Gateway, database, and downstream dependency health. */
 @RestController
 public class HealthController {
     private final JdbcTemplate jdbcTemplate;

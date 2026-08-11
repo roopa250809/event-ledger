@@ -11,6 +11,7 @@ import jakarta.persistence.Table;
 import java.math.BigDecimal;
 import java.time.Instant;
 
+/** Persists an immutable transaction in the account ledger. */
 @Entity
 @Table(name = "ledger_transactions", indexes = {
         @Index(name = "idx_transaction_account_time", columnList = "account_id,event_timestamp,event_id")

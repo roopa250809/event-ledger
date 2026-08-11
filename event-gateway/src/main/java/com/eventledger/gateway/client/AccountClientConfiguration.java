@@ -9,6 +9,7 @@ import org.springframework.web.client.RestClient;
 
 import java.time.Duration;
 
+/** Builds the authenticated, timeout-aware Account Service REST client. */
 @Configuration
 public class AccountClientConfiguration {
     @Bean

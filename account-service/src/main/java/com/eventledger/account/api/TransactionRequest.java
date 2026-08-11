@@ -11,6 +11,7 @@ import java.math.BigDecimal;
 import java.time.Instant;
 import java.util.Map;
 
+/** Defines the validated transaction payload accepted from the Gateway. */
 public record TransactionRequest(
         @NotBlank @Size(max = 100) String eventId,
         @NotBlank @Size(max = 100) String accountId,

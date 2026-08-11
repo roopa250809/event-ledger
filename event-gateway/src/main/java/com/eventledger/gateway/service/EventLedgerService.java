@@ -23,6 +23,7 @@ import org.springframework.transaction.annotation.Transactional;
 import java.time.Clock;
 import java.util.List;
 
+/** Coordinates event persistence, idempotency, and downstream processing. */
 @Service
 public class EventLedgerService {
     private static final Logger log = LoggerFactory.getLogger(EventLedgerService.class);
@@ -205,9 +206,11 @@ public class EventLedgerService {
         meterRegistry.counter("event.fallback.processing", "outcome", outcome).increment();
     }
 
+    /** Couples an event response with its HTTP submission status. */
     public record SubmissionResult(EventResponse response, HttpStatus status) {
     }
 
+    /** Tracks whether the current request created the pending event. */
     private record PendingResult(EventEntity event, boolean created) {
     }
 }

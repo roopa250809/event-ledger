@@ -6,6 +6,7 @@ import java.math.BigDecimal;
 import java.time.Instant;
 import java.util.Map;
 
+/** Represents a transaction returned by the Account Service. */
 public record AccountTransactionResponse(
         String eventId, String accountId, EventType type, BigDecimal amount, String currency,
         Instant eventTimestamp, Map<String, Object> metadata, Instant appliedAt) {

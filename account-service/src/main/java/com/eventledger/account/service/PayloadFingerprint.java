@@ -12,6 +12,7 @@ import java.security.NoSuchAlgorithmException;
 import java.util.HexFormat;
 import java.util.Map;
 
+/** Canonicalizes transaction payloads for reliable duplicate detection. */
 @Component
 public class PayloadFingerprint {
     private final ObjectMapper canonicalMapper;
@@ -61,6 +62,7 @@ public class PayloadFingerprint {
         }
     }
 
+    /** Holds normalized payload values and their content hash. */
     public record CanonicalPayload(String currency, String metadataJson, String hash) {
     }
 }

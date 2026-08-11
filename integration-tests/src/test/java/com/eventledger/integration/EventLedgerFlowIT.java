@@ -24,6 +24,7 @@ import static org.hamcrest.Matchers.hasSize;
 import static org.junit.jupiter.api.Assertions.assertEquals;
 
 @Testcontainers(disabledWithoutDocker = true)
+/** Exercises full Gateway, Account Service, and Kafka container flows. */
 class EventLedgerFlowIT {
     private static final String JWT_SECRET =
             "ZXZlbnQtbGVkZ2VyLWRldmVsb3BtZW50LXNlY3JldC1jaGFuZ2UtbWU=";

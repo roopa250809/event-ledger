@@ -15,6 +15,7 @@ import org.springframework.web.bind.annotation.RestController;
 
 import java.util.List;
 
+/** Exposes public event submission and query endpoints. */
 @RestController
 @RequestMapping("/events")
 @Validated

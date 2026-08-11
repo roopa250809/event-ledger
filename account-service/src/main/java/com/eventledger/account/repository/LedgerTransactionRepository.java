@@ -10,6 +10,7 @@ import org.springframework.data.repository.query.Param;
 import java.math.BigDecimal;
 import java.util.List;
 
+/** Provides transaction persistence, ordering, and balance aggregation queries. */
 public interface LedgerTransactionRepository extends JpaRepository<LedgerTransactionEntity, String> {
     List<LedgerTransactionEntity> findByAccountIdOrderByEventTimestampDescEventIdAsc(
             String accountId, Pageable pageable);

@@ -9,6 +9,7 @@ import org.springframework.stereotype.Component;
 import java.time.Duration;
 import java.util.concurrent.TimeUnit;
 
+/** Publishes broker-acknowledged event IDs to the Kafka retry topic. */
 @Component
 @ConditionalOnProperty(prefix = "event-ledger.kafka", name = "enabled", havingValue = "true", matchIfMissing = true)
 public class KafkaFallbackEventPublisher implements FallbackEventPublisher {

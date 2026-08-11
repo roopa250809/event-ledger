@@ -33,6 +33,7 @@ import java.util.Base64;
 import java.util.List;
 import java.util.Map;
 
+/** Configures JWT authorization for public Gateway routes. */
 @Configuration
 public class SecurityConfiguration {
     @Bean

@@ -6,6 +6,7 @@ import jakarta.servlet.http.HttpServletResponse;
 import org.springframework.stereotype.Component;
 import org.springframework.web.servlet.HandlerInterceptor;
 
+/** Adds the active trace ID to Gateway responses. */
 @Component
 public class TraceResponseInterceptor implements HandlerInterceptor {
     private final Tracer tracer;

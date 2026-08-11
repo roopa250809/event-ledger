@@ -13,6 +13,7 @@ import org.springframework.web.client.RestClient;
 import java.nio.charset.StandardCharsets;
 import java.util.concurrent.TimeUnit;
 
+/** Calls Account Service endpoints with resilience and metrics. */
 @Component
 public class AccountServiceClient {
     private static final String RESILIENCE_INSTANCE = "accountService";
@@ -120,6 +121,7 @@ public class AccountServiceClient {
     }
 
     @FunctionalInterface
+    /** Represents an Account Service operation that may fail. */
     private interface SupplierWithResult<T> {
         T get();
     }

@@ -16,6 +16,7 @@ import java.nio.charset.StandardCharsets;
 import java.security.MessageDigest;
 import java.util.List;
 
+/** Authenticates internal requests using the shared service API key. */
 @Component
 public class ServiceApiKeyFilter extends OncePerRequestFilter {
     private static final String HEADER = "X-Service-Api-Key";

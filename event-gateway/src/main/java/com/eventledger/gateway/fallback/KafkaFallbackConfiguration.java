@@ -11,6 +11,7 @@ import org.springframework.util.backoff.FixedBackOff;
 
 import java.time.Duration;
 
+/** Configures the Kafka retry topic and unlimited transient retries. */
 @Configuration
 @ConditionalOnProperty(prefix = "event-ledger.kafka", name = "enabled", havingValue = "true", matchIfMissing = true)
 public class KafkaFallbackConfiguration {

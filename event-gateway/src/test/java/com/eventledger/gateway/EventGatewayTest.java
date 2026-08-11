@@ -1,21 +1,27 @@
 package com.eventledger.gateway;
 
 import com.eventledger.gateway.repository.EventRepository;
+import com.fasterxml.jackson.databind.ObjectMapper;
+import com.fasterxml.jackson.databind.node.ObjectNode;
 import com.github.tomakehurst.wiremock.WireMockServer;
 import io.github.resilience4j.circuitbreaker.CircuitBreaker;
 import io.github.resilience4j.circuitbreaker.CircuitBreakerRegistry;
 import org.junit.jupiter.api.AfterAll;
 import org.junit.jupiter.api.BeforeEach;
 import org.junit.jupiter.api.Test;
+import org.junit.jupiter.params.ParameterizedTest;
+import org.junit.jupiter.params.provider.ValueSource;
 import org.springframework.beans.factory.annotation.Autowired;
 import org.springframework.boot.test.autoconfigure.web.servlet.AutoConfigureMockMvc;
 import org.springframework.boot.test.context.SpringBootTest;
+import org.springframework.core.io.ClassPathResource;
 import org.springframework.http.MediaType;
 import org.springframework.test.context.DynamicPropertyRegistry;
 import org.springframework.test.context.DynamicPropertySource;
 import org.springframework.test.web.servlet.MockMvc;
 import org.springframework.test.web.servlet.request.RequestPostProcessor;
 
+import java.io.IOException;
 import java.util.concurrent.CountDownLatch;
 import java.util.concurrent.Executors;
 
@@ -27,12 +33,14 @@ import static com.github.tomakehurst.wiremock.client.WireMock.urlEqualTo;
 import static com.github.tomakehurst.wiremock.client.WireMock.urlPathMatching;
 import static com.github.tomakehurst.wiremock.core.WireMockConfiguration.options;
 import static org.assertj.core.api.Assertions.assertThat;
+import static org.hamcrest.Matchers.hasItem;
 import static org.springframework.test.web.servlet.request.MockMvcRequestBuilders.get;
 import static org.springframework.test.web.servlet.request.MockMvcRequestBuilders.post;
 import static org.springframework.security.test.web.servlet.request.SecurityMockMvcRequestPostProcessors.jwt;
 import static org.springframework.test.web.servlet.result.MockMvcResultMatchers.jsonPath;
 import static org.springframework.test.web.servlet.result.MockMvcResultMatchers.status;
 
+/** Verifies Gateway API, resilience, tracing, and validation behavior. */
 @SpringBootTest
 @AutoConfigureMockMvc
 class EventGatewayTest {
@@ -52,6 +60,9 @@ class EventGatewayTest {
 
     @Autowired
     private EventRepository eventRepository;
+
+    @Autowired
+    private ObjectMapper objectMapper;
 
     @Autowired
     private CircuitBreakerRegistry circuitBreakerRegistry;
@@ -224,6 +235,36 @@ class EventGatewayTest {
     }
 
     @Test
+    void acceptsTheDocumentedSamplePayload() throws Exception {
+        stubSuccessfulApply();
+
+        mockMvc.perform(post("/events").with(clientToken())
+                        .contentType(MediaType.APPLICATION_JSON)
+                        .content(objectMapper.writeValueAsBytes(samplePayload())))
+                .andExpect(status().isCreated())
+                .andExpect(jsonPath("$.eventId").value("evt-001"))
+                .andExpect(jsonPath("$.status").value("APPLIED"))
+                .andExpect(jsonPath("$.metadata.source").value("mainframe-batch"))
+                .andExpect(jsonPath("$.metadata.batchId").value("B-9042"));
+    }
+
+    @ParameterizedTest(name = "rejects sample payload missing required field: {0}")
+    @ValueSource(strings = {
+            "eventId", "accountId", "type", "amount", "currency", "eventTimestamp"
+    })
+    void rejectsEachMissingRequiredField(String missingField) throws Exception {
+        ObjectNode payload = samplePayload();
+        payload.remove(missingField);
+
+        mockMvc.perform(post("/events").with(clientToken())
+                        .contentType(MediaType.APPLICATION_JSON)
+                        .content(objectMapper.writeValueAsBytes(payload)))
+                .andExpect(status().isBadRequest())
+                .andExpect(jsonPath("$.code").value("VALIDATION_ERROR"))
+                .andExpect(jsonPath("$.details[*].field", hasItem(missingField)));
+    }
+
+    @Test
     void requiresAuthenticationAndTheCorrectScope() throws Exception {
         mockMvc.perform(get("/events/evt-001"))
                 .andExpect(status().isUnauthorized())
@@ -246,6 +287,13 @@ class EventGatewayTest {
         ACCOUNT_SERVICE.stubFor(com.github.tomakehurst.wiremock.client.WireMock.post(urlPathMatching("/accounts/.+/transactions"))
                 .willReturn(aResponse().withStatus(201).withHeader("Content-Type", "application/json")
                         .withBody("{}")));
+    }
+
+    private ObjectNode samplePayload() throws IOException {
+        var resource = new ClassPathResource("examples/event-request.json");
+        try (var input = resource.getInputStream()) {
+            return (ObjectNode) objectMapper.readTree(input);
+        }
     }
 
     private org.springframework.test.web.servlet.ResultActions submit(

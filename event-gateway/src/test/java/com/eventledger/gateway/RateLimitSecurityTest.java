@@ -13,6 +13,7 @@ import static org.springframework.test.web.servlet.result.MockMvcResultMatchers.
 import static org.springframework.test.web.servlet.result.MockMvcResultMatchers.jsonPath;
 import static org.springframework.test.web.servlet.result.MockMvcResultMatchers.status;
 
+/** Verifies per-client Gateway rate limiting. */
 @SpringBootTest(properties = "event-ledger.security.rate-limit.requests-per-minute=1")
 @AutoConfigureMockMvc
 class RateLimitSecurityTest {

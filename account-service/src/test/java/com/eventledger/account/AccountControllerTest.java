@@ -20,6 +20,7 @@ import static org.springframework.test.web.servlet.result.MockMvcResultMatchers.
 import static org.springframework.test.web.servlet.result.MockMvcResultMatchers.jsonPath;
 import static org.springframework.test.web.servlet.result.MockMvcResultMatchers.status;
 
+/** Verifies Account Service API, ledger, validation, and security behavior. */
 @SpringBootTest
 @AutoConfigureMockMvc
 class AccountControllerTest {
