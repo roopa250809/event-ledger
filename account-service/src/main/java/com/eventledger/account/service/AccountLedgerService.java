@@ -16,7 +16,9 @@ import org.slf4j.LoggerFactory;
 import org.springframework.dao.DataIntegrityViolationException;
 import org.springframework.data.domain.PageRequest;
 import org.springframework.stereotype.Service;
+import org.springframework.transaction.PlatformTransactionManager;
 import org.springframework.transaction.annotation.Transactional;
+import org.springframework.transaction.support.TransactionTemplate;
 
 import java.math.BigDecimal;
 import java.time.Clock;
@@ -32,27 +34,21 @@ public class AccountLedgerService {
     private final PayloadFingerprint fingerprint;
     private final MeterRegistry meterRegistry;
     private final Clock clock;
+    private final TransactionTemplate transactionTemplate;
 
     public AccountLedgerService(AccountRepository accountRepository,
                                 LedgerTransactionRepository transactionRepository,
                                 PayloadFingerprint fingerprint,
-                                MeterRegistry meterRegistry) {
-        this(accountRepository, transactionRepository, fingerprint, meterRegistry, Clock.systemUTC());
-    }
-
-    AccountLedgerService(AccountRepository accountRepository,
-                         LedgerTransactionRepository transactionRepository,
-                         PayloadFingerprint fingerprint,
-                         MeterRegistry meterRegistry,
-                         Clock clock) {
+                                MeterRegistry meterRegistry,
+                                PlatformTransactionManager transactionManager) {
         this.accountRepository = accountRepository;
         this.transactionRepository = transactionRepository;
         this.fingerprint = fingerprint;
         this.meterRegistry = meterRegistry;
-        this.clock = clock;
+        this.clock = Clock.systemUTC();
+        this.transactionTemplate = new TransactionTemplate(transactionManager);
     }
 
-    @Transactional
     public ApplyResult apply(String accountId, TransactionRequest request) {
         if (!accountId.equals(request.accountId())) {
             throw new IllegalArgumentException("Path accountId must match body accountId");
@@ -64,6 +60,21 @@ public class AccountLedgerService {
             return existingResult(existing.get(), canonical.hash());
         }
 
+        try {
+            return transactionTemplate.execute(status -> applyNew(accountId, request, canonical));
+        } catch (DataIntegrityViolationException race) {
+            LedgerTransactionEntity winner = transactionRepository.findById(request.eventId())
+                    .orElseThrow(() -> race);
+            return existingResult(winner, canonical.hash());
+        }
+    }
+
+    private ApplyResult applyNew(String accountId, TransactionRequest request,
+                                 PayloadFingerprint.CanonicalPayload canonical) {
+        var existing = transactionRepository.findById(request.eventId());
+        if (existing.isPresent()) {
+            return existingResult(existing.get(), canonical.hash());
+        }
         AccountEntity account = accountRepository.findById(accountId)
                 .orElseGet(() -> accountRepository.save(
                         new AccountEntity(accountId, canonical.currency(), clock.instant())));
@@ -74,13 +85,7 @@ public class AccountLedgerService {
         var transaction = new LedgerTransactionEntity(
                 request.eventId(), accountId, request.type(), request.amount(), canonical.currency(),
                 request.eventTimestamp(), canonical.metadataJson(), canonical.hash(), clock.instant());
-        try {
-            transactionRepository.saveAndFlush(transaction);
-        } catch (DataIntegrityViolationException race) {
-            LedgerTransactionEntity winner = transactionRepository.findById(request.eventId())
-                    .orElseThrow(() -> race);
-            return existingResult(winner, canonical.hash());
-        }
+        transactionRepository.saveAndFlush(transaction);
 
         counter("applied", request.type()).increment();
         log.atInfo().addKeyValue("eventId", request.eventId())
