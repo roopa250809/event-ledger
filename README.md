@@ -6,21 +6,43 @@ when a downstream service fails.
 
 ## Architecture
 
-```text
-Client
-  |
-  | HTTPS + scoped Bearer JWT
-  v
-Event Gateway :8080             H2 gateway-db
-  |  \
-  |   \ on transient failure: eventId -> Kafka retry topic
-  |    \                                  |
-  | synchronous REST + service API key    | background retry
-  | + W3C trace context                    |
-  v                                       v
-Account Service :8081 <-------------------+    H2 account-db
-       |                    |
-       +---- OTLP traces ---+--> OpenTelemetry Collector --> Jaeger UI :16686
+```mermaid
+flowchart LR
+    client(["API client"])
+
+    subgraph gateway["Event Gateway · :8080"]
+        direction TB
+        api["Public REST API"]
+        retry["Kafka retry consumer"]
+        gatewayDb[("Gateway DB<br/>events and processing status")]
+        api <-->|"persist and query"| gatewayDb
+        retry -->|"reload event"| gatewayDb
+    end
+
+    subgraph account["Account Service · :8081 · internal only"]
+        direction TB
+        accountApi["Transaction and account API"]
+        accountDb[("Account DB<br/>immutable transaction ledger")]
+        accountApi <-->|"atomic ledger operations"| accountDb
+    end
+
+    kafka[["Kafka fallback topic"]]
+
+    subgraph observability["Observability"]
+        direction LR
+        collector["OpenTelemetry Collector"]
+        jaeger["Jaeger UI · :16686"]
+        collector -->|"OTLP"| jaeger
+    end
+
+    client -->|"HTTPS + scoped Bearer JWT"| api
+    api -->|"Synchronous REST<br/>service API key + W3C trace context"| accountApi
+    api -.->|"transient failure: publish eventId"| kafka
+    kafka -.->|"redeliver"| retry
+    retry -->|"retry Account Service call"| accountApi
+    api -.->|"OTLP traces"| collector
+    retry -.->|"OTLP traces"| collector
+    accountApi -.->|"OTLP traces"| collector
 ```
 
 The **Event Gateway** validates and stores public events, enforces idempotency, exposes event queries,
