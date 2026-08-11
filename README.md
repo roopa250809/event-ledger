@@ -19,6 +19,8 @@ Event Gateway :8080             H2 gateway-db
   | + W3C trace context                    |
   v                                       v
 Account Service :8081 <-------------------+    H2 account-db
+       |                    |
+       +---- OTLP traces ---+--> OpenTelemetry Collector --> Jaeger UI :16686
 ```
 
 The **Event Gateway** validates and stores public events, enforces idempotency, exposes event queries,
@@ -73,12 +75,13 @@ rejected with `409 Conflict`. This prevents invalid cross-currency arithmetic.
 The Gateway's Account Service client uses:
 
 - 500 ms connect and 1 second response timeouts;
-- at most three attempts with exponential backoff;
+- at most three attempts with capped exponential backoff and random jitter;
 - a Resilience4j circuit breaker that opens after repeated transient failures;
 - no retries for downstream `4xx` responses.
 
-These values are externally configurable. Synchronous REST remains the primary path. If all bounded
-REST attempts fail, the Gateway publishes only the `eventId` to a Kafka retry topic and returns
+The retry begins at 200 ms, doubles on each attempt, randomizes each delay by up to 50%, and caps the
+delay at two seconds. These values are externally configurable. Synchronous REST remains the primary
+path. If all bounded REST attempts fail, the Gateway publishes only the `eventId` to a Kafka retry topic and returns
 `202 Accepted` with status `QUEUED`. The consumer reloads the authoritative payload from the Gateway
 database and retries every five seconds until the Account Service recovers. A successful retry changes
 the event to `APPLIED`; a permanent downstream `4xx` changes it to `FAILED` and is not retried.
@@ -103,9 +106,10 @@ Maven does not need to be installed; the Maven Wrapper is included.
 docker compose up --build
 ```
 
-Compose starts the Gateway, Account Service, and a single-node KRaft Kafka broker. The public Gateway
-is available at `http://localhost:8080`; the Account Service and Kafka are reachable only on the
-Compose network.
+Compose starts the Gateway, Account Service, a single-node KRaft Kafka broker, an OpenTelemetry
+Collector, and Jaeger. The public Gateway is available at `http://localhost:8080`; the Account
+Service, Kafka, and Collector are reachable only on the Compose network. Jaeger's trace search UI is
+available at `http://localhost:16686`.
 
 The Compose broker uses plaintext on its private development network. A production deployment should
 use a managed or multi-broker Kafka cluster with TLS/SASL authentication, topic ACLs, replication, and
@@ -235,7 +239,8 @@ Errors are JSON objects containing `code`, `message`, `traceId`, `timestamp`, an
 - Logs are JSON and include timestamp, level, service, trace ID, span ID, message, and structured
   event identifiers. Credentials, full financial payloads, and metadata are not logged.
 - Micrometer Tracing with the OpenTelemetry bridge creates traces and propagates W3C `traceparent`
-  headers from Gateway to Account Service. `X-Trace-Id` is also returned for support correlation.
+  headers from Gateway to Account Service. Both services export OTLP/HTTP spans to the Collector,
+  which batches and forwards them to Jaeger. `X-Trace-Id` is also returned for support correlation.
 
 ## Tests
 
@@ -254,8 +259,11 @@ Run all tests, including the Docker-based Gateway-to-Account flow:
 The suite covers validation, balance calculation, duplicate and conflicting IDs, out-of-order
 delivery, bounded retries, circuit breaker behavior, Kafka fallback/recovery, graceful degradation,
 trace propagation, JWT authorization, service authentication, rate limiting, and a real
-three-container flow. The integration profile requires Docker; unit/service tests disable Kafka and
-do not require a broker.
+three-container flow. Pact consumer tests invoke the Gateway's production Account Service client and
+write the contract to `contracts/pacts`; provider tests then replay it against a real Account Service
+test instance. The parent reactor runs Gateway tests before Account Service tests so generation and
+verification happen in one `mvn test` command. The integration profile requires Docker;
+unit/service tests disable Kafka and do not require a broker.
 
 ## Project structure
 
@@ -264,7 +272,9 @@ event-ledger/
 |-- account-service/       internal account ledger and queries
 |-- event-gateway/         public API, local event store, resilient REST client
 |-- integration-tests/     Docker-based full-flow test
+|-- contracts/pacts/       generated Gateway-to-Account Pact contract
 |-- openapi/               OpenAPI 3.1 service specifications
+|-- observability/         OpenTelemetry Collector configuration
 |-- docker-compose.yml
 `-- pom.xml                Maven reactor
 ```

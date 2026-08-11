@@ -18,8 +18,8 @@
     <name>Event Ledger</name>
 
     <modules>
-        <module>account-service</module>
         <module>event-gateway</module>
+        <module>account-service</module>
         <module>integration-tests</module>
     </modules>
 
@@ -28,6 +28,7 @@
         <resilience4j.version>2.4.0</resilience4j.version>
         <logstash-logback-encoder.version>8.1</logstash-logback-encoder.version>
         <testcontainers.version>1.21.3</testcontainers.version>
+        <pact.version>4.7.3</pact.version>
     </properties>
 
     <dependencyManagement>

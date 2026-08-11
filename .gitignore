@@ -7,4 +7,5 @@ data/
 dev-certs/*.p12
 .env
 .DS_Store
+contracts/pacts/*.json
 

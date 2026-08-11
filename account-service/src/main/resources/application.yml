@@ -28,6 +28,13 @@ event-ledger:
     service-api-key: ${ACCOUNT_SERVICE_API_KEY:local-service-key-change-me}
 
 management:
+  opentelemetry:
+    resource-attributes:
+      service.name: ${spring.application.name}
+    tracing:
+      export:
+        otlp:
+          endpoint: ${OTEL_TRACES_ENDPOINT:http://localhost:4318/v1/traces}
   endpoints:
     web:
       exposure:

@@ -13,6 +13,11 @@ account-service:
   connect-timeout: 100ms
   read-timeout: 200ms
   api-key: test-service-key-1234567890
+  retry:
+    initial-wait: 10ms
+    multiplier: 2.0
+    jitter-factor: 0.25
+    max-wait: 20ms
 event-ledger:
   kafka:
     enabled: false
@@ -29,8 +34,6 @@ resilience4j:
     instances:
       accountService:
         max-attempts: 2
-        wait-duration: 10ms
-        enable-exponential-backoff: false
         retry-exceptions:
           - com.eventledger.gateway.client.AccountServiceUnavailableException
         ignore-exceptions:

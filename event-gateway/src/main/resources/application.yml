@@ -67,6 +67,11 @@ account-service:
   base-url: ${ACCOUNT_SERVICE_URL:http://localhost:8081}
   connect-timeout: ${ACCOUNT_CONNECT_TIMEOUT:500ms}
   read-timeout: ${ACCOUNT_READ_TIMEOUT:1s}
+  retry:
+    initial-wait: ${ACCOUNT_RETRY_INITIAL_WAIT:200ms}
+    multiplier: ${ACCOUNT_RETRY_MULTIPLIER:2.0}
+    jitter-factor: ${ACCOUNT_RETRY_JITTER_FACTOR:0.5}
+    max-wait: ${ACCOUNT_RETRY_MAX_WAIT:2s}
   # Development-only default. Gateway and Account Service must use the same override.
   api-key: ${ACCOUNT_SERVICE_API_KEY:local-service-key-change-me}
 
@@ -75,9 +80,6 @@ resilience4j:
     instances:
       accountService:
         max-attempts: 3
-        wait-duration: 200ms
-        enable-exponential-backoff: true
-        exponential-backoff-multiplier: 2
         retry-exceptions:
           - com.eventledger.gateway.client.AccountServiceUnavailableException
         ignore-exceptions:
@@ -97,6 +99,13 @@ resilience4j:
           - com.eventledger.gateway.client.AccountServiceRejectedException
 
 management:
+  opentelemetry:
+    resource-attributes:
+      service.name: ${spring.application.name}
+    tracing:
+      export:
+        otlp:
+          endpoint: ${OTEL_TRACES_ENDPOINT:http://localhost:4318/v1/traces}
   endpoints:
     web:
       exposure:
