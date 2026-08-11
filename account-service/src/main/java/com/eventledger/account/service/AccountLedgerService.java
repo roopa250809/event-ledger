@@ -127,11 +127,7 @@ public class AccountLedgerService {
     }
 
     private BigDecimal calculateBalance(String accountId) {
-        BigDecimal credits = valueOrZero(transactionRepository
-                .sumByAccountIdAndType(accountId, TransactionType.CREDIT));
-        BigDecimal debits = valueOrZero(transactionRepository
-                .sumByAccountIdAndType(accountId, TransactionType.DEBIT));
-        return credits.subtract(debits);
+        return valueOrZero(transactionRepository.calculateNetBalance(accountId, TransactionType.CREDIT));
     }
 
     private TransactionResponse toResponse(LedgerTransactionEntity entity) {

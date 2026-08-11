@@ -12,6 +12,7 @@ import org.springframework.test.web.servlet.MockMvc;
 
 import java.util.concurrent.CountDownLatch;
 import java.util.concurrent.Executors;
+import java.util.List;
 
 import static org.assertj.core.api.Assertions.assertThat;
 import static org.springframework.test.web.servlet.request.MockMvcRequestBuilders.get;
@@ -58,6 +59,32 @@ class AccountControllerTest {
                 .andExpect(status().isOk())
                 .andExpect(jsonPath("$.recentTransactions[0].eventId").value("evt-later"))
                 .andExpect(jsonPath("$.recentTransactions[1].eventId").value("evt-earlier"));
+    }
+
+    @Test
+    void everyArrivalPermutationProducesTheSameFinancialBalance() throws Exception {
+        var credit100 = new Posting("credit-100", "CREDIT", "100.0000", "2026-05-15T14:00:00Z");
+        var debit25 = new Posting("debit-25", "DEBIT", "25.0000", "2026-05-15T14:05:00Z");
+        var credit10 = new Posting("credit-10", "CREDIT", "10.0000", "2026-05-15T13:55:00Z");
+        var permutations = List.of(
+                List.of(credit100, debit25, credit10),
+                List.of(credit100, credit10, debit25),
+                List.of(debit25, credit100, credit10),
+                List.of(debit25, credit10, credit100),
+                List.of(credit10, credit100, debit25),
+                List.of(credit10, debit25, credit100));
+
+        for (int index = 0; index < permutations.size(); index++) {
+            String accountId = "acct-permutation-" + index;
+            for (Posting posting : permutations.get(index)) {
+                submit(accountId, posting.eventId() + "-" + index, posting.type(),
+                        posting.amount(), posting.timestamp()).andExpect(status().isCreated());
+            }
+            mockMvc.perform(get("/accounts/{accountId}/balance", accountId)
+                            .header("X-Service-Api-Key", SERVICE_API_KEY))
+                    .andExpect(status().isOk())
+                    .andExpect(jsonPath("$.balance").value(85.0));
+        }
     }
 
     @Test
@@ -132,6 +159,14 @@ class AccountControllerTest {
     }
 
     @Test
+    void rejectsAmountsThatExceedTheSupportedFinancialScale() throws Exception {
+        submit("evt-over-precision", "CREDIT", "1.00001", "2026-05-15T14:00:00Z")
+                .andExpect(status().isBadRequest())
+                .andExpect(jsonPath("$.code").value("VALIDATION_ERROR"))
+                .andExpect(jsonPath("$.details[*].field").value(org.hamcrest.Matchers.hasItem("amount")));
+    }
+
+    @Test
     void rejectsCurrencyChangesForAnAccount() throws Exception {
         submit("evt-usd", "CREDIT", "10.00", "2026-05-15T14:00:00Z")
                 .andExpect(status().isCreated());
@@ -163,23 +198,36 @@ class AccountControllerTest {
 
     private org.springframework.test.web.servlet.ResultActions submit(
             String eventId, String type, String amount, String timestamp) throws Exception {
-        return mockMvc.perform(post("/accounts/acct-123/transactions")
+        return submit("acct-123", eventId, type, amount, timestamp);
+    }
+
+    private org.springframework.test.web.servlet.ResultActions submit(
+            String accountId, String eventId, String type, String amount, String timestamp) throws Exception {
+        return mockMvc.perform(post("/accounts/{accountId}/transactions", accountId)
                 .header("X-Service-Api-Key", SERVICE_API_KEY)
                 .contentType(MediaType.APPLICATION_JSON)
-                .content(validPayload(eventId, type, amount, timestamp)));
+                .content(validPayload(accountId, eventId, type, amount, timestamp)));
     }
 
     private String validPayload(String eventId, String type, String amount, String timestamp) {
+        return validPayload("acct-123", eventId, type, amount, timestamp);
+    }
+
+    private String validPayload(String accountId, String eventId, String type, String amount, String timestamp) {
         return """
                 {
                   "eventId": "%s",
-                  "accountId": "acct-123",
+                  "accountId": "%s",
                   "type": "%s",
                   "amount": %s,
                   "currency": "USD",
                   "eventTimestamp": "%s",
                   "metadata": {"source": "test"}
                 }
-                """.formatted(eventId, type, amount, timestamp);
+                """.formatted(eventId, accountId, type, amount, timestamp);
+    }
+
+    /** Defines a transaction used to verify arrival-order permutations. */
+    private record Posting(String eventId, String type, String amount, String timestamp) {
     }
 }

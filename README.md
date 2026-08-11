@@ -64,8 +64,14 @@ is lost.
 
 `eventTimestamp` is stored separately from arrival/application time. Gateway listings use
 `eventTimestamp ASC, eventId ASC`, giving deterministic chronological results. Account balances are
-computed from the authoritative transaction ledger as `SUM(CREDIT) - SUM(DEBIT)`, so arrival order
-cannot affect the result. Money uses `BigDecimal`, never floating-point arithmetic.
+computed from the authoritative immutable transaction ledger in one signed aggregate statement as
+`SUM(CREDIT) - SUM(DEBIT)`. The single statement observes one database snapshot, and addition is
+commutative, so neither arrival order nor concurrent posting can change the result. `eventTimestamp`
+is the business-effective time; `appliedAt` is the server-controlled posting time. Money uses
+`BigDecimal` with at most 15 integer and four fractional digits, never floating-point arithmetic.
+
+The financial invariants and scaling path are documented in
+[`docs/financial-ledger-invariants.md`](docs/financial-ledger-invariants.md).
 
 An account is single-currency: its first transaction establishes the currency and a later mismatch is
 rejected with `409 Conflict`. This prevents invalid cross-currency arithmetic.

@@ -235,6 +235,14 @@ class EventGatewayTest {
     }
 
     @Test
+    void rejectsAmountsThatWouldRequireFinancialRounding() throws Exception {
+        submit("evt-over-precision", "CREDIT", "1.00001", "2026-05-15T14:00:00Z")
+                .andExpect(status().isBadRequest())
+                .andExpect(jsonPath("$.code").value("VALIDATION_ERROR"))
+                .andExpect(jsonPath("$.details[*].field", hasItem("amount")));
+    }
+
+    @Test
     void acceptsTheDocumentedSamplePayload() throws Exception {
         stubSuccessfulApply();
 

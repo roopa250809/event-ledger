@@ -15,8 +15,9 @@ public interface LedgerTransactionRepository extends JpaRepository<LedgerTransac
     List<LedgerTransactionEntity> findByAccountIdOrderByEventTimestampDescEventIdAsc(
             String accountId, Pageable pageable);
 
-    @Query("select sum(t.amount) from LedgerTransactionEntity t " +
-            "where t.accountId = :accountId and t.type = :type")
-    BigDecimal sumByAccountIdAndType(@Param("accountId") String accountId,
-                                    @Param("type") TransactionType type);
+    @Query("select sum(case when t.type = :creditType then t.amount else -t.amount end) " +
+            "from LedgerTransactionEntity t " +
+            "where t.accountId = :accountId")
+    BigDecimal calculateNetBalance(@Param("accountId") String accountId,
+                                   @Param("creditType") TransactionType creditType);
 }
