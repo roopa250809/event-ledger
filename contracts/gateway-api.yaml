@@ -1,0 +1,169 @@
+openapi: 3.1.0
+info:
+  title: Event Gateway API
+  version: 1.0.0
+  description: Public synchronous API for the Event Ledger system.
+servers:
+  - url: http://localhost:8080
+paths:
+  /events:
+    post:
+      operationId: submitEvent
+      summary: Validate, persist, and apply a transaction event
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              $ref: '#/components/schemas/EventRequest'
+      responses:
+        '201':
+          description: A new event was applied
+          content:
+            application/json:
+              schema: { $ref: '#/components/schemas/EventResponse' }
+        '200':
+          description: The original response for an identical duplicate
+          content:
+            application/json:
+              schema: { $ref: '#/components/schemas/EventResponse' }
+        '400': { $ref: '#/components/responses/BadRequest' }
+        '409': { $ref: '#/components/responses/Conflict' }
+        '503': { $ref: '#/components/responses/Unavailable' }
+    get:
+      operationId: listAccountEvents
+      summary: List an account's events in ascending event-time order
+      parameters:
+        - in: query
+          name: account
+          required: true
+          schema: { type: string }
+      responses:
+        '200':
+          description: Chronological events
+          content:
+            application/json:
+              schema:
+                type: array
+                items: { $ref: '#/components/schemas/EventResponse' }
+  /events/{eventId}:
+    get:
+      operationId: getEvent
+      parameters:
+        - in: path
+          name: eventId
+          required: true
+          schema: { type: string }
+      responses:
+        '200':
+          description: Stored event
+          content:
+            application/json:
+              schema: { $ref: '#/components/schemas/EventResponse' }
+        '404': { $ref: '#/components/responses/NotFound' }
+  /accounts/{accountId}/balance:
+    get:
+      operationId: getAccountBalance
+      description: Public proxy to the internal Account Service.
+      parameters:
+        - in: path
+          name: accountId
+          required: true
+          schema: { type: string }
+      responses:
+        '200':
+          description: Current account balance
+          content:
+            application/json:
+              schema: { $ref: '#/components/schemas/BalanceResponse' }
+        '404': { $ref: '#/components/responses/NotFound' }
+        '503': { $ref: '#/components/responses/Unavailable' }
+  /accounts/{accountId}:
+    get:
+      operationId: getAccount
+      parameters:
+        - in: path
+          name: accountId
+          required: true
+          schema: { type: string }
+        - in: query
+          name: recentLimit
+          schema: { type: integer, minimum: 1, maximum: 100, default: 20 }
+      responses:
+        '200': { description: Account details and recent transactions }
+        '404': { $ref: '#/components/responses/NotFound' }
+        '503': { $ref: '#/components/responses/Unavailable' }
+  /health:
+    get:
+      operationId: gatewayHealth
+      responses:
+        '200': { description: Gateway database is available }
+        '503': { description: Gateway database is unavailable }
+components:
+  schemas:
+    EventRequest:
+      type: object
+      additionalProperties: false
+      required: [eventId, accountId, type, amount, currency, eventTimestamp]
+      properties:
+        eventId: { type: string, minLength: 1, maxLength: 100 }
+        accountId: { type: string, minLength: 1, maxLength: 100 }
+        type: { type: string, enum: [CREDIT, DEBIT] }
+        amount: { type: number, exclusiveMinimum: 0 }
+        currency: { type: string, pattern: '^[A-Za-z]{3}$' }
+        eventTimestamp: { type: string, format: date-time }
+        metadata: { type: object, additionalProperties: true }
+    EventResponse:
+      allOf:
+        - $ref: '#/components/schemas/EventRequest'
+        - type: object
+          required: [status, receivedAt]
+          properties:
+            status: { type: string, enum: [PENDING, APPLIED, FAILED] }
+            receivedAt: { type: string, format: date-time }
+            lastAttemptAt: { type: [string, 'null'], format: date-time }
+            failureReason: { type: [string, 'null'] }
+    BalanceResponse:
+      type: object
+      required: [accountId, balance, currency, asOf]
+      properties:
+        accountId: { type: string }
+        balance: { type: number }
+        currency: { type: string }
+        asOf: { type: string, format: date-time }
+    ErrorResponse:
+      type: object
+      required: [code, message, traceId, timestamp, details]
+      properties:
+        code: { type: string }
+        message: { type: string }
+        traceId: { type: string }
+        timestamp: { type: string, format: date-time }
+        details:
+          type: array
+          items:
+            type: object
+            properties:
+              field: { type: string }
+              message: { type: string }
+  responses:
+    BadRequest:
+      description: Invalid request
+      content:
+        application/json:
+          schema: { $ref: '#/components/schemas/ErrorResponse' }
+    Conflict:
+      description: The event ID or account currency conflicts with stored data
+      content:
+        application/json:
+          schema: { $ref: '#/components/schemas/ErrorResponse' }
+    NotFound:
+      description: Resource not found
+      content:
+        application/json:
+          schema: { $ref: '#/components/schemas/ErrorResponse' }
+    Unavailable:
+      description: Account Service unavailable
+      content:
+        application/json:
+          schema: { $ref: '#/components/schemas/ErrorResponse' }

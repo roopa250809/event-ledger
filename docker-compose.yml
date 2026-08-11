@@ -1,0 +1,33 @@
+services:
+  account-service:
+    build:
+      context: .
+      dockerfile: account-service/Dockerfile
+    environment:
+      ACCOUNT_DB_URL: jdbc:h2:file:/data/account-db
+      ACCOUNT_SERVICE_PORT: 8081
+    expose:
+      - "8081"
+    volumes:
+      - account-data:/data
+    restart: unless-stopped
+
+  event-gateway:
+    build:
+      context: .
+      dockerfile: event-gateway/Dockerfile
+    environment:
+      GATEWAY_DB_URL: jdbc:h2:file:/data/gateway-db
+      ACCOUNT_SERVICE_URL: http://account-service:8081
+      GATEWAY_PORT: 8080
+    ports:
+      - "8080:8080"
+    volumes:
+      - gateway-data:/data
+    depends_on:
+      - account-service
+    restart: unless-stopped
+
+volumes:
+  account-data:
+  gateway-data:
