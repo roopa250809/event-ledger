@@ -5,6 +5,8 @@ info:
   description: Public synchronous API for the Event Ledger system.
 servers:
   - url: http://localhost:8080
+security:
+  - bearerAuth: []
 paths:
   /events:
     post:
@@ -28,7 +30,10 @@ paths:
             application/json:
               schema: { $ref: '#/components/schemas/EventResponse' }
         '400': { $ref: '#/components/responses/BadRequest' }
+        '401': { $ref: '#/components/responses/Unauthorized' }
+        '403': { $ref: '#/components/responses/Forbidden' }
         '409': { $ref: '#/components/responses/Conflict' }
+        '429': { $ref: '#/components/responses/RateLimited' }
         '503': { $ref: '#/components/responses/Unavailable' }
     get:
       operationId: listAccountEvents
@@ -46,6 +51,9 @@ paths:
               schema:
                 type: array
                 items: { $ref: '#/components/schemas/EventResponse' }
+        '401': { $ref: '#/components/responses/Unauthorized' }
+        '403': { $ref: '#/components/responses/Forbidden' }
+        '429': { $ref: '#/components/responses/RateLimited' }
   /events/{eventId}:
     get:
       operationId: getEvent
@@ -61,6 +69,9 @@ paths:
             application/json:
               schema: { $ref: '#/components/schemas/EventResponse' }
         '404': { $ref: '#/components/responses/NotFound' }
+        '401': { $ref: '#/components/responses/Unauthorized' }
+        '403': { $ref: '#/components/responses/Forbidden' }
+        '429': { $ref: '#/components/responses/RateLimited' }
   /accounts/{accountId}/balance:
     get:
       operationId: getAccountBalance
@@ -77,6 +88,9 @@ paths:
             application/json:
               schema: { $ref: '#/components/schemas/BalanceResponse' }
         '404': { $ref: '#/components/responses/NotFound' }
+        '401': { $ref: '#/components/responses/Unauthorized' }
+        '403': { $ref: '#/components/responses/Forbidden' }
+        '429': { $ref: '#/components/responses/RateLimited' }
         '503': { $ref: '#/components/responses/Unavailable' }
   /accounts/{accountId}:
     get:
@@ -92,14 +106,24 @@ paths:
       responses:
         '200': { description: Account details and recent transactions }
         '404': { $ref: '#/components/responses/NotFound' }
+        '401': { $ref: '#/components/responses/Unauthorized' }
+        '403': { $ref: '#/components/responses/Forbidden' }
+        '429': { $ref: '#/components/responses/RateLimited' }
         '503': { $ref: '#/components/responses/Unavailable' }
   /health:
     get:
       operationId: gatewayHealth
+      security: []
       responses:
         '200': { description: Gateway database is available }
         '503': { description: Gateway database is unavailable }
 components:
+  securitySchemes:
+    bearerAuth:
+      type: http
+      scheme: bearer
+      bearerFormat: JWT
+      description: JWT from the configured JWK Set URI, or local HS256 development key, with endpoint scopes.
   schemas:
     EventRequest:
       type: object
@@ -154,6 +178,24 @@ components:
           schema: { $ref: '#/components/schemas/ErrorResponse' }
     Conflict:
       description: The event ID or account currency conflicts with stored data
+      content:
+        application/json:
+          schema: { $ref: '#/components/schemas/ErrorResponse' }
+    Unauthorized:
+      description: A valid Bearer token is required
+      content:
+        application/json:
+          schema: { $ref: '#/components/schemas/ErrorResponse' }
+    Forbidden:
+      description: The Bearer token lacks the required scope
+      content:
+        application/json:
+          schema: { $ref: '#/components/schemas/ErrorResponse' }
+    RateLimited:
+      description: Per-client request limit exceeded
+      headers:
+        Retry-After:
+          schema: { type: integer }
       content:
         application/json:
           schema: { $ref: '#/components/schemas/ErrorResponse' }

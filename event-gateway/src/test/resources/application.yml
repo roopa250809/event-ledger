@@ -10,6 +10,11 @@ account-service:
   base-url: http://localhost:${wiremock.server.port:18081}
   connect-timeout: 100ms
   read-timeout: 200ms
+  api-key: test-service-key-1234567890
+event-ledger:
+  security:
+    rate-limit:
+      requests-per-minute: 1000
 resilience4j:
   retry:
     instances:

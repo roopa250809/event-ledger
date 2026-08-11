@@ -10,3 +10,6 @@ management:
   tracing:
     sampling:
       probability: 1.0
+event-ledger:
+  security:
+    service-api-key: test-service-key-1234567890

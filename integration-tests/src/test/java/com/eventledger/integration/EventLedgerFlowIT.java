@@ -10,13 +10,22 @@ import org.testcontainers.junit.jupiter.Container;
 import org.testcontainers.junit.jupiter.Testcontainers;
 
 import java.io.File;
+import java.nio.charset.StandardCharsets;
 import java.time.Duration;
+import java.time.Instant;
+import java.util.Base64;
+
+import javax.crypto.Mac;
+import javax.crypto.spec.SecretKeySpec;
 
 import static org.hamcrest.Matchers.equalTo;
 import static org.hamcrest.Matchers.hasSize;
 
 @Testcontainers(disabledWithoutDocker = true)
 class EventLedgerFlowIT {
+    private static final String JWT_SECRET =
+            "ZXZlbnQtbGVkZ2VyLWRldmVsb3BtZW50LXNlY3JldC1jaGFuZ2UtbWU=";
+    private static final String ACCESS_TOKEN = createAccessToken();
     @Container
     private static final ComposeContainer ENVIRONMENT =
             new ComposeContainer(new File("../docker-compose.yml"))
@@ -37,6 +46,7 @@ class EventLedgerFlowIT {
         submit("evt-e2e-later", "DEBIT", 40, "2026-05-15T14:05:00Z", 200);
 
         RestAssured.given()
+                .auth().oauth2(ACCESS_TOKEN)
                 .queryParam("account", "acct-e2e")
                 .when().get("/events")
                 .then().statusCode(200)
@@ -44,7 +54,8 @@ class EventLedgerFlowIT {
                 .body("[0].eventId", equalTo("evt-e2e-earlier"))
                 .body("[1].eventId", equalTo("evt-e2e-later"));
 
-        RestAssured.when().get("/accounts/acct-e2e/balance")
+        RestAssured.given().auth().oauth2(ACCESS_TOKEN)
+                .when().get("/accounts/acct-e2e/balance")
                 .then().statusCode(200)
                 .body("balance", equalTo(60.0f))
                 .body("currency", equalTo("USD"));
@@ -52,6 +63,7 @@ class EventLedgerFlowIT {
 
     private void submit(String eventId, String type, int amount, String timestamp, int expectedStatus) {
         RestAssured.given()
+                .auth().oauth2(ACCESS_TOKEN)
                 .contentType(ContentType.JSON)
                 .body("""
                         {
@@ -66,5 +78,29 @@ class EventLedgerFlowIT {
                         """.formatted(eventId, type, amount, timestamp))
                 .when().post("/events")
                 .then().statusCode(expectedStatus);
+    }
+
+    private static String createAccessToken() {
+        try {
+            long now = Instant.now().getEpochSecond();
+            String header = base64Url("{\"alg\":\"HS256\",\"typ\":\"JWT\"}");
+            String payload = base64Url("""
+                    {"iss":"event-ledger-local","aud":["event-ledger-api"],
+                    "sub":"integration-test","scope":"events.read events.write accounts.read",
+                    "iat":%d,"exp":%d}
+                    """.formatted(now, now + 600).replace("\n", ""));
+            String unsigned = header + "." + payload;
+            Mac mac = Mac.getInstance("HmacSHA256");
+            mac.init(new SecretKeySpec(Base64.getDecoder().decode(JWT_SECRET), "HmacSHA256"));
+            return unsigned + "." + Base64.getUrlEncoder().withoutPadding()
+                    .encodeToString(mac.doFinal(unsigned.getBytes(StandardCharsets.UTF_8)));
+        } catch (Exception exception) {
+            throw new IllegalStateException("Could not create integration-test JWT", exception);
+        }
+    }
+
+    private static String base64Url(String value) {
+        return Base64.getUrlEncoder().withoutPadding()
+                .encodeToString(value.getBytes(StandardCharsets.UTF_8));
     }
 }

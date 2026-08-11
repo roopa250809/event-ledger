@@ -20,6 +20,12 @@ spring:
 server:
   port: ${ACCOUNT_SERVICE_PORT:8081}
   shutdown: graceful
+  forward-headers-strategy: framework
+
+event-ledger:
+  security:
+    # Development-only default. Always override this outside local/demo use.
+    service-api-key: ${ACCOUNT_SERVICE_API_KEY:local-service-key-change-me}
 
 management:
   endpoints:

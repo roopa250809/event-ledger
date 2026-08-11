@@ -14,6 +14,7 @@ import org.springframework.http.MediaType;
 import org.springframework.test.context.DynamicPropertyRegistry;
 import org.springframework.test.context.DynamicPropertySource;
 import org.springframework.test.web.servlet.MockMvc;
+import org.springframework.test.web.servlet.request.RequestPostProcessor;
 
 import java.util.concurrent.CountDownLatch;
 import java.util.concurrent.Executors;
@@ -28,6 +29,7 @@ import static com.github.tomakehurst.wiremock.core.WireMockConfiguration.options
 import static org.assertj.core.api.Assertions.assertThat;
 import static org.springframework.test.web.servlet.request.MockMvcRequestBuilders.get;
 import static org.springframework.test.web.servlet.request.MockMvcRequestBuilders.post;
+import static org.springframework.security.test.web.servlet.request.SecurityMockMvcRequestPostProcessors.jwt;
 import static org.springframework.test.web.servlet.result.MockMvcResultMatchers.jsonPath;
 import static org.springframework.test.web.servlet.result.MockMvcResultMatchers.status;
 
@@ -89,7 +91,7 @@ class EventGatewayTest {
         submit("evt-earlier", "CREDIT", "100", "2026-05-15T14:00:00Z")
                 .andExpect(status().isCreated());
 
-        mockMvc.perform(get("/events").param("account", "acct-123"))
+        mockMvc.perform(get("/events").with(clientToken()).param("account", "acct-123"))
                 .andExpect(status().isOk())
                 .andExpect(jsonPath("$[0].eventId").value("evt-earlier"))
                 .andExpect(jsonPath("$[1].eventId").value("evt-later"));
@@ -114,10 +116,10 @@ class EventGatewayTest {
                 .andExpect(status().isServiceUnavailable())
                 .andExpect(jsonPath("$.code").value("ACCOUNT_SERVICE_UNAVAILABLE"));
 
-        mockMvc.perform(get("/events/evt-failed"))
+        mockMvc.perform(get("/events/evt-failed").with(clientToken()))
                 .andExpect(status().isOk())
                 .andExpect(jsonPath("$.status").value("FAILED"));
-        mockMvc.perform(get("/events").param("account", "acct-123"))
+        mockMvc.perform(get("/events").with(clientToken()).param("account", "acct-123"))
                 .andExpect(status().isOk())
                 .andExpect(jsonPath("$[0].eventId").value("evt-failed"));
         ACCOUNT_SERVICE.verify(2, postRequestedFor(urlEqualTo("/accounts/acct-123/transactions")));
@@ -129,7 +131,7 @@ class EventGatewayTest {
                         urlEqualTo("/accounts/acct-123/balance"))
                 .willReturn(aResponse().withStatus(503)));
 
-        mockMvc.perform(get("/accounts/acct-123/balance"))
+        mockMvc.perform(get("/accounts/acct-123/balance").with(clientToken()))
                 .andExpect(status().isServiceUnavailable())
                 .andExpect(jsonPath("$.code").value("ACCOUNT_SERVICE_UNAVAILABLE"));
     }
@@ -185,7 +187,8 @@ class EventGatewayTest {
 
         ACCOUNT_SERVICE.verify(postRequestedFor(urlEqualTo("/accounts/acct-123/transactions"))
                 .withHeader("traceparent", matching("00-[0-9a-f]{32}-[0-9a-f]{16}-0[01]"))
-                .withHeader("X-Trace-Id", matching("[0-9a-f]{32}")));
+                .withHeader("X-Trace-Id", matching("[0-9a-f]{32}"))
+                .withHeader("X-Service-Api-Key", equalTo("test-service-key-1234567890")));
     }
 
     @Test
@@ -214,9 +217,29 @@ class EventGatewayTest {
                   "eventTimestamp": "not-a-time"
                 }
                 """;
-        mockMvc.perform(post("/events").contentType(MediaType.APPLICATION_JSON).content(invalid))
+        mockMvc.perform(post("/events").with(clientToken())
+                        .contentType(MediaType.APPLICATION_JSON).content(invalid))
                 .andExpect(status().isBadRequest())
                 .andExpect(jsonPath("$.code").value("INVALID_REQUEST"));
+    }
+
+    @Test
+    void requiresAuthenticationAndTheCorrectScope() throws Exception {
+        mockMvc.perform(get("/events/evt-001"))
+                .andExpect(status().isUnauthorized())
+                .andExpect(jsonPath("$.code").value("UNAUTHORIZED"));
+
+        mockMvc.perform(post("/events")
+                        .with(jwt().authorities(
+                                new org.springframework.security.core.authority.SimpleGrantedAuthority(
+                                        "SCOPE_events.read")))
+                        .contentType(MediaType.APPLICATION_JSON)
+                        .content("{}"))
+                .andExpect(status().isForbidden())
+                .andExpect(jsonPath("$.code").value("FORBIDDEN"));
+
+        mockMvc.perform(get("/health"))
+                .andExpect(status().isOk());
     }
 
     private void stubSuccessfulApply() {
@@ -228,6 +251,7 @@ class EventGatewayTest {
     private org.springframework.test.web.servlet.ResultActions submit(
             String eventId, String type, String amount, String timestamp) throws Exception {
         return mockMvc.perform(post("/events")
+                .with(clientToken())
                 .contentType(MediaType.APPLICATION_JSON)
                 .content("""
                         {
@@ -240,5 +264,13 @@ class EventGatewayTest {
                           "metadata": {"source": "test"}
                         }
                         """.formatted(eventId, type, amount, timestamp)));
+    }
+
+    private static RequestPostProcessor clientToken() {
+        return jwt().jwt(token -> token.subject("test-client"))
+                .authorities(
+                        new org.springframework.security.core.authority.SimpleGrantedAuthority("SCOPE_events.read"),
+                        new org.springframework.security.core.authority.SimpleGrantedAuthority("SCOPE_events.write"),
+                        new org.springframework.security.core.authority.SimpleGrantedAuthority("SCOPE_accounts.read"));
     }
 }

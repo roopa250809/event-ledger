@@ -5,6 +5,8 @@ info:
   description: Internal API called synchronously by the Event Gateway.
 servers:
   - url: http://localhost:8081
+security:
+  - serviceApiKey: []
 paths:
   /accounts/{accountId}/transactions:
     post:
@@ -31,6 +33,7 @@ paths:
             application/json:
               schema: { $ref: '#/components/schemas/TransactionResponse' }
         '400': { $ref: '#/components/responses/BadRequest' }
+        '401': { $ref: '#/components/responses/Unauthorized' }
         '409': { $ref: '#/components/responses/Conflict' }
   /accounts/{accountId}/balance:
     get:
@@ -47,6 +50,7 @@ paths:
             application/json:
               schema: { $ref: '#/components/schemas/BalanceResponse' }
         '404': { $ref: '#/components/responses/NotFound' }
+        '401': { $ref: '#/components/responses/Unauthorized' }
   /accounts/{accountId}:
     get:
       operationId: getAccountDetails
@@ -65,13 +69,20 @@ paths:
             application/json:
               schema: { $ref: '#/components/schemas/AccountResponse' }
         '404': { $ref: '#/components/responses/NotFound' }
+        '401': { $ref: '#/components/responses/Unauthorized' }
   /health:
     get:
       operationId: accountServiceHealth
       responses:
         '200': { description: Service and database are available }
+        '401': { $ref: '#/components/responses/Unauthorized' }
         '503': { description: Database unavailable }
 components:
+  securitySchemes:
+    serviceApiKey:
+      type: apiKey
+      in: header
+      name: X-Service-Api-Key
   schemas:
     TransactionRequest:
       type: object
@@ -129,6 +140,11 @@ components:
           schema: { $ref: '#/components/schemas/ErrorResponse' }
     NotFound:
       description: Account not found
+      content:
+        application/json:
+          schema: { $ref: '#/components/schemas/ErrorResponse' }
+    Unauthorized:
+      description: A valid Gateway service API key is required
       content:
         application/json:
           schema: { $ref: '#/components/schemas/ErrorResponse' }

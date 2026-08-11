@@ -16,7 +16,8 @@ public class AccountClientConfiguration {
                                  Tracer tracer,
                                  @Value("${account-service.base-url}") String baseUrl,
                                  @Value("${account-service.connect-timeout}") Duration connectTimeout,
-                                 @Value("${account-service.read-timeout}") Duration readTimeout) {
+                                 @Value("${account-service.read-timeout}") Duration readTimeout,
+                                 @Value("${account-service.api-key}") String serviceApiKey) {
         var requestFactory = new SimpleClientHttpRequestFactory();
         requestFactory.setConnectTimeout(connectTimeout);
         requestFactory.setReadTimeout(readTimeout);
@@ -25,6 +26,7 @@ public class AccountClientConfiguration {
                 .baseUrl(baseUrl)
                 .requestFactory(requestFactory)
                 .requestInterceptor((request, body, execution) -> {
+                    request.getHeaders().set("X-Service-Api-Key", serviceApiKey);
                     if (tracer.currentSpan() != null) {
                         request.getHeaders().set("X-Trace-Id", tracer.currentSpan().context().traceId());
                     }

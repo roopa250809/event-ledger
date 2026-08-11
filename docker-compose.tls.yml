@@ -1,0 +1,9 @@
+services:
+  event-gateway:
+    environment:
+      GATEWAY_SSL_ENABLED: "true"
+      GATEWAY_SSL_KEY_STORE: file:/run/secrets/gateway.p12
+      GATEWAY_SSL_KEY_STORE_PASSWORD: ${GATEWAY_SSL_KEY_STORE_PASSWORD:-changeit}
+      GATEWAY_SSL_KEY_ALIAS: event-gateway
+    volumes:
+      - ./dev-certs/gateway.p12:/run/secrets/gateway.p12:ro
