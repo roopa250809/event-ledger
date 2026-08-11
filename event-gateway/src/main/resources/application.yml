@@ -1,0 +1,65 @@
+spring:
+  application:
+    name: event-gateway
+  datasource:
+    url: ${GATEWAY_DB_URL:jdbc:h2:file:./data/gateway-db;AUTO_SERVER=TRUE}
+    username: ${GATEWAY_DB_USERNAME:sa}
+    password: ${GATEWAY_DB_PASSWORD:}
+    driver-class-name: org.h2.Driver
+  jpa:
+    open-in-view: false
+    hibernate:
+      ddl-auto: update
+    properties:
+      hibernate:
+        jdbc:
+          time_zone: UTC
+  lifecycle:
+    timeout-per-shutdown-phase: 10s
+
+server:
+  port: ${GATEWAY_PORT:8080}
+  shutdown: graceful
+
+account-service:
+  base-url: ${ACCOUNT_SERVICE_URL:http://localhost:8081}
+  connect-timeout: ${ACCOUNT_CONNECT_TIMEOUT:500ms}
+  read-timeout: ${ACCOUNT_READ_TIMEOUT:1s}
+
+resilience4j:
+  retry:
+    instances:
+      accountService:
+        max-attempts: 3
+        wait-duration: 200ms
+        enable-exponential-backoff: true
+        exponential-backoff-multiplier: 2
+        retry-exceptions:
+          - com.eventledger.gateway.client.AccountServiceUnavailableException
+        ignore-exceptions:
+          - com.eventledger.gateway.client.AccountServiceRejectedException
+  circuitbreaker:
+    instances:
+      accountService:
+        sliding-window-type: COUNT_BASED
+        sliding-window-size: 10
+        minimum-number-of-calls: 5
+        failure-rate-threshold: 50
+        wait-duration-in-open-state: 10s
+        permitted-number-of-calls-in-half-open-state: 2
+        record-exceptions:
+          - com.eventledger.gateway.client.AccountServiceUnavailableException
+        ignore-exceptions:
+          - com.eventledger.gateway.client.AccountServiceRejectedException
+
+management:
+  endpoints:
+    web:
+      exposure:
+        include: health,info,metrics,prometheus
+  tracing:
+    sampling:
+      probability: 1.0
+  metrics:
+    tags:
+      service: ${spring.application.name}
