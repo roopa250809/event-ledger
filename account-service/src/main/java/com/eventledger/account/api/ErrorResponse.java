@@ -9,8 +9,4 @@ public record ErrorResponse(String code, String message, String traceId, Instant
     /** Describes one invalid request field. */
     public record FieldErrorDetail(String field, String message) {
     }
-
-    public static ErrorResponse of(String code, String message, String traceId) {
-        return new ErrorResponse(code, message, traceId, Instant.now(), List.of());
-    }
 }
