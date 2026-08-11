@@ -1,0 +1,38 @@
+spring:
+  datasource:
+    url: jdbc:h2:mem:gateway-test;DB_CLOSE_DELAY=-1
+    username: sa
+    password:
+  jpa:
+    hibernate:
+      ddl-auto: create-drop
+account-service:
+  base-url: http://localhost:${wiremock.server.port:18081}
+  connect-timeout: 100ms
+  read-timeout: 200ms
+resilience4j:
+  retry:
+    instances:
+      accountService:
+        max-attempts: 2
+        wait-duration: 10ms
+        enable-exponential-backoff: false
+        retry-exceptions:
+          - com.eventledger.gateway.client.AccountServiceUnavailableException
+        ignore-exceptions:
+          - com.eventledger.gateway.client.AccountServiceRejectedException
+  circuitbreaker:
+    instances:
+      accountService:
+        sliding-window-size: 4
+        minimum-number-of-calls: 2
+        failure-rate-threshold: 50
+        wait-duration-in-open-state: 1s
+        record-exceptions:
+          - com.eventledger.gateway.client.AccountServiceUnavailableException
+        ignore-exceptions:
+          - com.eventledger.gateway.client.AccountServiceRejectedException
+management:
+  tracing:
+    sampling:
+      probability: 1.0
