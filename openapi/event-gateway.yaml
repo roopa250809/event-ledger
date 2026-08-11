@@ -29,6 +29,11 @@ paths:
           content:
             application/json:
               schema: { $ref: '#/components/schemas/EventResponse' }
+        '202':
+          description: Account Service is unavailable and Kafka acknowledged the event for retry
+          content:
+            application/json:
+              schema: { $ref: '#/components/schemas/EventResponse' }
         '400': { $ref: '#/components/responses/BadRequest' }
         '401': { $ref: '#/components/responses/Unauthorized' }
         '403': { $ref: '#/components/responses/Forbidden' }
@@ -143,7 +148,7 @@ components:
         - type: object
           required: [status, receivedAt]
           properties:
-            status: { type: string, enum: [PENDING, APPLIED, FAILED] }
+            status: { type: string, enum: [PENDING, QUEUED, APPLIED, FAILED] }
             receivedAt: { type: string, format: date-time }
             lastAttemptAt: { type: [string, 'null'], format: date-time }
             failureReason: { type: [string, 'null'] }
@@ -205,7 +210,7 @@ components:
         application/json:
           schema: { $ref: '#/components/schemas/ErrorResponse' }
     Unavailable:
-      description: Account Service unavailable
+      description: Account Service and Kafka fallback are both unavailable
       content:
         application/json:
           schema: { $ref: '#/components/schemas/ErrorResponse' }

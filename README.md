@@ -12,10 +12,13 @@ Client
   | HTTPS + scoped Bearer JWT
   v
 Event Gateway :8080             H2 gateway-db
-  |
-  | synchronous REST + service API key + W3C trace context
-  v
-Account Service :8081           H2 account-db
+  |  \
+  |   \ on transient failure: eventId -> Kafka retry topic
+  |    \                                  |
+  | synchronous REST + service API key    | background retry
+  | + W3C trace context                    |
+  v                                       v
+Account Service :8081 <-------------------+    H2 account-db
 ```
 
 The **Event Gateway** validates and stores public events, enforces idempotency, exposes event queries,
@@ -42,8 +45,8 @@ credential automatically; clients never receive it. API requests are limited per
 subject and Gateway instance (120 requests/minute by default) and return `429` plus `Retry-After`
 when exhausted.
 
-The committed contracts are in [`contracts/gateway-api.yaml`](contracts/gateway-api.yaml) and
-[`contracts/account-service-api.yaml`](contracts/account-service-api.yaml).
+The committed specifications are in [`openapi/event-gateway.yaml`](openapi/event-gateway.yaml) and
+[`openapi/account-service.yaml`](openapi/account-service.yaml).
 
 ## Key decisions
 
@@ -74,10 +77,18 @@ The Gateway's Account Service client uses:
 - a Resilience4j circuit breaker that opens after repeated transient failures;
 - no retries for downstream `4xx` responses.
 
-These values are externally configurable. A failed post returns a structured `503` and records the
-Gateway event as `FAILED`, allowing an identical resubmission to retry safely. Gateway-local reads keep
-working while the Account Service is down. A queue was intentionally not added: the required boundary
-is synchronous REST, while asynchronous fallback is listed as bonus scope.
+These values are externally configurable. Synchronous REST remains the primary path. If all bounded
+REST attempts fail, the Gateway publishes only the `eventId` to a Kafka retry topic and returns
+`202 Accepted` with status `QUEUED`. The consumer reloads the authoritative payload from the Gateway
+database and retries every five seconds until the Account Service recovers. A successful retry changes
+the event to `APPLIED`; a permanent downstream `4xx` changes it to `FAILED` and is not retried.
+
+The producer waits for a broker acknowledgement with `acks=all` before returning `202`, and producer
+idempotence is enabled. A Kafka
+record can still be delivered more than once after a consumer crash, so the Account Service's unique
+`eventId` constraint remains the final exactly-once-effect guard. If both the Account Service and Kafka
+are unavailable, the Gateway records `FAILED` and returns the original structured `503`. Gateway-local
+reads continue to work throughout an outage.
 
 ## Prerequisites
 
@@ -92,8 +103,13 @@ Maven does not need to be installed; the Maven Wrapper is included.
 docker compose up --build
 ```
 
-The public Gateway is available at `http://localhost:8080`. The Account Service is reachable only on
-the Compose network, matching its internal-service role.
+Compose starts the Gateway, Account Service, and a single-node KRaft Kafka broker. The public Gateway
+is available at `http://localhost:8080`; the Account Service and Kafka are reachable only on the
+Compose network.
+
+The Compose broker uses plaintext on its private development network. A production deployment should
+use a managed or multi-broker Kafka cluster with TLS/SASL authentication, topic ACLs, replication, and
+environment-specific retention policies.
 
 The checked-in credential defaults are strictly for local demonstration. For any shared environment,
 copy `.env.example` to `.env`, replace both secrets, and mint JWTs using the same Base64 JWT secret.
@@ -104,7 +120,7 @@ Stop the system with:
 docker compose down
 ```
 
-Add `-v` only when you intentionally want to remove both persisted H2 volumes.
+Add `-v` only when you intentionally want to remove both persisted H2 volumes and the Kafka volume.
 
 ## Start manually
 
@@ -119,6 +135,10 @@ In terminal two:
 ```shell
 ./mvnw -pl event-gateway spring-boot:run
 ```
+
+Manual mode expects Kafka at `localhost:9092`. To run only the required synchronous REST baseline
+without Kafka, set `KAFKA_FALLBACK_ENABLED=false` before starting the Gateway; Account Service outages
+then return `503` as before.
 
 On Windows PowerShell, use `./mvnw.cmd` instead of `./mvnw`.
 
@@ -190,13 +210,14 @@ curl.exe -H "Authorization: Bearer $token" http://localhost:8080/accounts/acct-1
 |---|---:|
 | Newly applied event | `201 Created` |
 | Identical duplicate | `200 OK` |
+| Account Service unavailable; Kafka accepted fallback | `202 Accepted` |
 | Invalid request | `400 Bad Request` |
 | Missing/invalid JWT | `401 Unauthorized` |
 | Missing required scope | `403 Forbidden` |
 | Conflicting event ID or currency | `409 Conflict` |
 | Per-client rate limit exceeded | `429 Too Many Requests` |
 | Missing event/account | `404 Not Found` |
-| Account Service timeout, outage, or open circuit | `503 Service Unavailable` |
+| Account Service and Kafka both unavailable | `503 Service Unavailable` |
 
 Errors are JSON objects containing `code`, `message`, `traceId`, `timestamp`, and field-level
 `details` where applicable.
@@ -209,7 +230,8 @@ Errors are JSON objects containing `code`, `message`, `traceId`, `timestamp`, an
 - `/actuator/prometheus` exposes JVM, HTTP, Resilience4j, and custom metrics. Gateway actuator routes
   require the `ops` scope; Account Service actuator routes require the internal service key.
 - Custom metrics include `event_submissions_total`, `account_service_calls_total`,
-  `account_service_latency_seconds`, and `transactions_applied_total` (Prometheus naming).
+  `account_service_latency_seconds`, `event_fallback_published_total`,
+  `event_fallback_processing_total`, and `transactions_applied_total` (Prometheus naming).
 - Logs are JSON and include timestamp, level, service, trace ID, span ID, message, and structured
   event identifiers. Credentials, full financial payloads, and metadata are not logged.
 - Micrometer Tracing with the OpenTelemetry bridge creates traces and propagates W3C `traceparent`
@@ -230,9 +252,10 @@ Run all tests, including the Docker-based Gateway-to-Account flow:
 ```
 
 The suite covers validation, balance calculation, duplicate and conflicting IDs, out-of-order
-delivery, bounded retries, circuit breaker behavior, graceful degradation, trace propagation, JWT
-authorization, service authentication, rate limiting, and a real two-container flow. The integration
-profile requires Docker; unit/service tests do not.
+delivery, bounded retries, circuit breaker behavior, Kafka fallback/recovery, graceful degradation,
+trace propagation, JWT authorization, service authentication, rate limiting, and a real
+three-container flow. The integration profile requires Docker; unit/service tests disable Kafka and
+do not require a broker.
 
 ## Project structure
 
@@ -241,7 +264,7 @@ event-ledger/
 |-- account-service/       internal account ledger and queries
 |-- event-gateway/         public API, local event store, resilient REST client
 |-- integration-tests/     Docker-based full-flow test
-|-- contracts/             OpenAPI 3.1 service contracts
+|-- openapi/               OpenAPI 3.1 service specifications
 |-- docker-compose.yml
 `-- pom.xml                Maven reactor
 ```

@@ -16,6 +16,25 @@ spring:
           time_zone: UTC
   lifecycle:
     timeout-per-shutdown-phase: 10s
+  kafka:
+    bootstrap-servers: ${KAFKA_BOOTSTRAP_SERVERS:localhost:9092}
+    producer:
+      acks: all
+      key-serializer: org.apache.kafka.common.serialization.StringSerializer
+      value-serializer: org.apache.kafka.common.serialization.StringSerializer
+      properties:
+        enable.idempotence: true
+        delivery.timeout.ms: 3000
+        request.timeout.ms: 1000
+        max.block.ms: 1000
+    consumer:
+      group-id: ${KAFKA_CONSUMER_GROUP:event-gateway-fallback}
+      auto-offset-reset: earliest
+      enable-auto-commit: false
+      key-deserializer: org.apache.kafka.common.serialization.StringDeserializer
+      value-deserializer: org.apache.kafka.common.serialization.StringDeserializer
+    listener:
+      ack-mode: record
 
 server:
   port: ${GATEWAY_PORT:8080}
@@ -29,6 +48,11 @@ server:
     key-alias: ${GATEWAY_SSL_KEY_ALIAS:event-gateway}
 
 event-ledger:
+  kafka:
+    enabled: ${KAFKA_FALLBACK_ENABLED:true}
+    topic: ${KAFKA_FALLBACK_TOPIC:event-ledger.account-retry.v1}
+    publish-timeout: ${KAFKA_PUBLISH_TIMEOUT:3s}
+    retry-interval: ${KAFKA_RETRY_INTERVAL:5s}
   security:
     jwt:
       issuer: ${GATEWAY_JWT_ISSUER:event-ledger-local}

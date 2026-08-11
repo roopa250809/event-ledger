@@ -83,10 +83,21 @@ public class EventEntity {
         failureReason = null;
     }
 
+    public void markQueued(Instant attemptedAt, String reason) {
+        processingStatus = ProcessingStatus.QUEUED;
+        lastAttemptAt = attemptedAt;
+        failureReason = truncatedReason(reason);
+    }
+
     public void markFailed(Instant attemptedAt, String reason) {
         processingStatus = ProcessingStatus.FAILED;
         lastAttemptAt = attemptedAt;
-        failureReason = reason == null ? "Account Service unavailable" : reason.substring(0, Math.min(500, reason.length()));
+        failureReason = truncatedReason(reason);
+    }
+
+    private String truncatedReason(String reason) {
+        String resolved = reason == null ? "Account Service unavailable" : reason;
+        return resolved.substring(0, Math.min(500, resolved.length()));
     }
 
     public String getEventId() { return eventId; }

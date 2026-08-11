@@ -3,7 +3,6 @@ package com.eventledger.gateway.api;
 import com.eventledger.gateway.service.EventLedgerService;
 import jakarta.validation.Valid;
 import jakarta.validation.constraints.NotBlank;
-import org.springframework.http.HttpStatus;
 import org.springframework.http.ResponseEntity;
 import org.springframework.validation.annotation.Validated;
 import org.springframework.web.bind.annotation.GetMapping;
@@ -29,7 +28,7 @@ public class EventController {
     @PostMapping
     public ResponseEntity<EventResponse> submit(@Valid @RequestBody EventRequest request) {
         var result = eventLedgerService.submit(request);
-        return ResponseEntity.status(result.created() ? HttpStatus.CREATED : HttpStatus.OK)
+        return ResponseEntity.status(result.status())
                 .body(result.response());
     }
 

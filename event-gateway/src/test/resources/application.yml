@@ -1,4 +1,6 @@
 spring:
+  application:
+    name: event-gateway
   datasource:
     url: jdbc:h2:mem:gateway-test;DB_CLOSE_DELAY=-1
     username: sa
@@ -12,7 +14,14 @@ account-service:
   read-timeout: 200ms
   api-key: test-service-key-1234567890
 event-ledger:
+  kafka:
+    enabled: false
   security:
+    jwt:
+      issuer: event-ledger-local
+      audience: event-ledger-api
+      jwk-set-uri: ""
+      secret: ZXZlbnQtbGVkZ2VyLWRldmVsb3BtZW50LXNlY3JldC1jaGFuZ2UtbWU=
     rate-limit:
       requests-per-minute: 1000
 resilience4j:

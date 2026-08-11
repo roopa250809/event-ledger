@@ -1,4 +1,35 @@
 services:
+  kafka:
+    image: apache/kafka:4.3.1
+    hostname: kafka
+    environment:
+      KAFKA_NODE_ID: 1
+      KAFKA_PROCESS_ROLES: broker,controller
+      KAFKA_LISTENER_SECURITY_PROTOCOL_MAP: CONTROLLER:PLAINTEXT,PLAINTEXT:PLAINTEXT
+      KAFKA_ADVERTISED_LISTENERS: PLAINTEXT://kafka:9092
+      KAFKA_LISTENERS: CONTROLLER://:9093,PLAINTEXT://:9092
+      KAFKA_INTER_BROKER_LISTENER_NAME: PLAINTEXT
+      KAFKA_CONTROLLER_LISTENER_NAMES: CONTROLLER
+      KAFKA_CONTROLLER_QUORUM_VOTERS: 1@kafka:9093
+      KAFKA_OFFSETS_TOPIC_REPLICATION_FACTOR: 1
+      KAFKA_GROUP_INITIAL_REBALANCE_DELAY_MS: 0
+      KAFKA_TRANSACTION_STATE_LOG_MIN_ISR: 1
+      KAFKA_TRANSACTION_STATE_LOG_REPLICATION_FACTOR: 1
+      KAFKA_SHARE_COORDINATOR_STATE_TOPIC_REPLICATION_FACTOR: 1
+      KAFKA_SHARE_COORDINATOR_STATE_TOPIC_MIN_ISR: 1
+      KAFKA_LOG_DIRS: /tmp/kraft-combined-logs
+      CLUSTER_ID: 4L6g3nShT-eMCtK--X86sw
+    expose:
+      - "9092"
+    volumes:
+      - kafka-data:/tmp/kraft-combined-logs
+    healthcheck:
+      test: ["CMD-SHELL", "/opt/kafka/bin/kafka-topics.sh --bootstrap-server localhost:9092 --list"]
+      interval: 5s
+      timeout: 5s
+      retries: 20
+    restart: unless-stopped
+
   account-service:
     build:
       context: .
@@ -27,14 +58,22 @@ services:
       GATEWAY_JWT_JWK_SET_URI: ${GATEWAY_JWT_JWK_SET_URI:-}
       GATEWAY_JWT_SECRET: ${GATEWAY_JWT_SECRET:-ZXZlbnQtbGVkZ2VyLWRldmVsb3BtZW50LXNlY3JldC1jaGFuZ2UtbWU=}
       GATEWAY_RATE_LIMIT_PER_MINUTE: ${GATEWAY_RATE_LIMIT_PER_MINUTE:-120}
+      KAFKA_BOOTSTRAP_SERVERS: kafka:9092
+      KAFKA_FALLBACK_ENABLED: ${KAFKA_FALLBACK_ENABLED:-true}
+      KAFKA_FALLBACK_TOPIC: ${KAFKA_FALLBACK_TOPIC:-event-ledger.account-retry.v1}
+      KAFKA_RETRY_INTERVAL: ${KAFKA_RETRY_INTERVAL:-5s}
     ports:
       - "127.0.0.1:8080:8080"
     volumes:
       - gateway-data:/data
     depends_on:
-      - account-service
+      account-service:
+        condition: service_started
+      kafka:
+        condition: service_healthy
     restart: unless-stopped
 
 volumes:
+  kafka-data:
   account-data:
   gateway-data:
