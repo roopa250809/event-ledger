@@ -1,9 +1,9 @@
 package com.eventledger.account.service;
 
 import com.eventledger.account.api.TransactionRequest;
-import com.fasterxml.jackson.core.JsonProcessingException;
-import com.fasterxml.jackson.databind.ObjectMapper;
-import com.fasterxml.jackson.databind.SerializationFeature;
+import tools.jackson.core.JacksonException;
+import tools.jackson.databind.ObjectMapper;
+import tools.jackson.databind.SerializationFeature;
 import org.springframework.stereotype.Component;
 
 import java.nio.charset.StandardCharsets;
@@ -18,8 +18,9 @@ public class PayloadFingerprint {
     private final ObjectMapper canonicalMapper;
 
     public PayloadFingerprint(ObjectMapper objectMapper) {
-        this.canonicalMapper = objectMapper.copy()
-                .configure(SerializationFeature.ORDER_MAP_ENTRIES_BY_KEYS, true);
+        this.canonicalMapper = objectMapper.rebuild()
+                .enable(SerializationFeature.ORDER_MAP_ENTRIES_BY_KEYS)
+                .build();
     }
 
     public CanonicalPayload canonicalize(TransactionRequest request, String accountId) {
@@ -40,7 +41,7 @@ public class PayloadFingerprint {
         try {
             return canonicalMapper.readValue(value, canonicalMapper.getTypeFactory()
                     .constructMapType(Map.class, String.class, Object.class));
-        } catch (JsonProcessingException exception) {
+        } catch (JacksonException exception) {
             throw new IllegalStateException("Stored metadata is not valid JSON", exception);
         }
     }
@@ -48,7 +49,7 @@ public class PayloadFingerprint {
     private String canonicalMetadata(Map<String, Object> metadata) {
         try {
             return canonicalMapper.writeValueAsString(metadata == null ? Map.of() : metadata);
-        } catch (JsonProcessingException exception) {
+        } catch (JacksonException exception) {
             throw new IllegalArgumentException("metadata must contain JSON-compatible values", exception);
         }
     }

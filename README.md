@@ -1,6 +1,6 @@
 # Event Ledger
 
-A Java 21/Spring Boot implementation of two independently runnable services that accept financial
+A Java 25/Spring Boot 4 implementation of two independently runnable services that accept financial
 transaction events, tolerate duplicate and out-of-order delivery, and remain observable and responsive
 when a downstream service fails.
 
@@ -92,7 +92,7 @@ reads continue to work throughout an outage.
 
 ## Prerequisites
 
-- Java 21 for manual execution
+- Java 25 for manual execution
 - Docker with Docker Compose for the simplest startup and full integration tests
 
 Maven does not need to be installed; the Maven Wrapper is included.
