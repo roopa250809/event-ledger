@@ -7,7 +7,7 @@ import com.eventledger.gateway.client.AccountServiceRejectedException;
 import com.eventledger.gateway.client.AccountServiceUnavailableException;
 import com.eventledger.gateway.domain.EventEntity;
 import com.eventledger.gateway.domain.ProcessingStatus;
-import com.eventledger.gateway.fallback.FallbackEventPublisher;
+import com.eventledger.gateway.fallback.FallbackEventQueue;
 import com.eventledger.gateway.fallback.FallbackQueueUnavailableException;
 import com.eventledger.gateway.repository.EventRepository;
 import io.github.resilience4j.circuitbreaker.CallNotPermittedException;
@@ -31,19 +31,19 @@ public class EventLedgerService {
     private final EventRepository eventRepository;
     private final AccountServiceClient accountServiceClient;
     private final PayloadFingerprint fingerprint;
-    private final FallbackEventPublisher fallbackEventPublisher;
+    private final FallbackEventQueue fallbackEventQueue;
     private final MeterRegistry meterRegistry;
     private final Clock clock;
 
     public EventLedgerService(EventRepository eventRepository,
                               AccountServiceClient accountServiceClient,
                               PayloadFingerprint fingerprint,
-                              FallbackEventPublisher fallbackEventPublisher,
+                              FallbackEventQueue fallbackEventQueue,
                               MeterRegistry meterRegistry) {
         this.eventRepository = eventRepository;
         this.accountServiceClient = accountServiceClient;
         this.fingerprint = fingerprint;
-        this.fallbackEventPublisher = fallbackEventPublisher;
+        this.fallbackEventQueue = fallbackEventQueue;
         this.meterRegistry = meterRegistry;
         this.clock = Clock.systemUTC();
     }
@@ -171,13 +171,15 @@ public class EventLedgerService {
                                            String reason,
                                            AccountServiceUnavailableException accountFailure) {
         try {
-            fallbackEventPublisher.enqueue(event.getEventId());
-            event.markQueued(clock.instant(), reason);
-            event = saveAfterAttempt(event);
-            count("queued");
-            log.atWarn().addKeyValue("eventId", event.getEventId())
-                    .addKeyValue("accountId", event.getAccountId())
-                    .log("Account Service unavailable; event queued in Kafka");
+            event = fallbackEventQueue.enqueue(event.getEventId(), clock.instant(), reason);
+            if (event.getProcessingStatus() == ProcessingStatus.QUEUED) {
+                count("queued");
+                log.atWarn().addKeyValue("eventId", event.getEventId())
+                        .addKeyValue("accountId", event.getAccountId())
+                        .log("Account Service unavailable; event staged in the transactional outbox");
+            } else {
+                count("applied_concurrently");
+            }
             HttpStatus status = event.getProcessingStatus() == ProcessingStatus.APPLIED
                     ? (created ? HttpStatus.CREATED : HttpStatus.OK)
                     : HttpStatus.ACCEPTED;

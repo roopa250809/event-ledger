@@ -13,9 +13,11 @@ flowchart LR
     subgraph gateway["Event Gateway · :8080"]
         direction TB
         api["Public REST API"]
+        relay["Transactional outbox relay"]
         retry["Kafka retry consumer"]
-        gatewayDb[("Gateway DB<br/>events and processing status")]
+        gatewayDb[("Gateway DB<br/>events + transactional outbox")]
         api <-->|"persist and query"| gatewayDb
+        gatewayDb -->|"poll unpublished rows"| relay
         retry -->|"reload event"| gatewayDb
     end
 
@@ -37,7 +39,7 @@ flowchart LR
 
     client -->|"HTTPS + scoped Bearer JWT"| api
     api -->|"Synchronous REST<br/>service API key + W3C trace context"| accountApi
-    api -.->|"transient failure: publish eventId"| kafka
+    relay -.->|"publish eventId after commit"| kafka
     kafka -.->|"redeliver"| retry
     retry -->|"retry Account Service call"| accountApi
     api -.->|"OTLP traces"| collector
@@ -109,17 +111,20 @@ The Gateway's Account Service client uses:
 
 The retry begins at 200 ms, doubles on each attempt, randomizes each delay by up to 50%, and caps the
 delay at two seconds. These values are externally configurable. Synchronous REST remains the primary
-path. If all bounded REST attempts fail, the Gateway publishes only the `eventId` to a Kafka retry topic and returns
-`202 Accepted` with status `QUEUED`. The consumer reloads the authoritative payload from the Gateway
-database and retries every five seconds until the Account Service recovers. A successful retry changes
-the event to `APPLIED`; a permanent downstream `4xx` changes it to `FAILED` and is not retried.
+path. If all bounded REST attempts fail, the Gateway atomically marks the event `QUEUED` and inserts an
+outbox message in the same local database transaction, then returns `202 Accepted`. A background relay
+locks unpublished rows in bounded batches, publishes only the `eventId`, and marks each row published
+only after an `acks=all` broker acknowledgment. If Kafka is unavailable, the committed outbox row stays
+pending and is retried without losing the accepted event. Published rows are retained for seven days by
+default for diagnosis and then cleaned up.
 
-The producer waits for a broker acknowledgement with `acks=all` before returning `202`, and producer
-idempotence is enabled. A Kafka
-record can still be delivered more than once after a consumer crash, so the Account Service's unique
-`eventId` constraint remains the final exactly-once-effect guard. If both the Account Service and Kafka
-are unavailable, the Gateway records `FAILED` and returns the original structured `503`. Gateway-local
-reads continue to work throughout an outage.
+The Kafka consumer reloads the authoritative payload from the Gateway database and retries until the
+Account Service recovers. A successful retry changes the event to `APPLIED`; a permanent downstream
+`4xx` changes it to `FAILED` and is not retried. A relay crash after broker acknowledgment but before the
+outbox status commit can publish a record more than once. Producer idempotence reduces broker-level
+duplicates, while the Account Service's unique `eventId` constraint remains the final exactly-once-effect
+guard. When Kafka fallback is explicitly disabled, an Account Service outage records `FAILED` and returns
+the original structured `503`. Gateway-local reads continue to work throughout an outage.
 
 ## Prerequisites
 
@@ -242,14 +247,14 @@ curl.exe -H "Authorization: Bearer $token" http://localhost:8080/accounts/acct-1
 |---|---:|
 | Newly applied event | `201 Created` |
 | Identical duplicate | `200 OK` |
-| Account Service unavailable; Kafka accepted fallback | `202 Accepted` |
+| Account Service unavailable; event committed to transactional outbox | `202 Accepted` |
 | Invalid request | `400 Bad Request` |
 | Missing/invalid JWT | `401 Unauthorized` |
 | Missing required scope | `403 Forbidden` |
 | Conflicting event ID or currency | `409 Conflict` |
 | Per-client rate limit exceeded | `429 Too Many Requests` |
 | Missing event/account | `404 Not Found` |
-| Account Service and Kafka both unavailable | `503 Service Unavailable` |
+| Account Service unavailable and fallback disabled/unavailable | `503 Service Unavailable` |
 
 Errors are JSON objects containing `code`, `message`, `traceId`, `timestamp`, and field-level
 `details` where applicable.
@@ -262,7 +267,7 @@ Errors are JSON objects containing `code`, `message`, `traceId`, `timestamp`, an
 - `/actuator/prometheus` exposes JVM, HTTP, Resilience4j, and custom metrics. Gateway actuator routes
   require the `ops` scope; Account Service actuator routes require the internal service key.
 - Custom metrics include `event_submissions_total`, `account_service_calls_total`,
-  `account_service_latency_seconds`, `event_fallback_published_total`,
+  `account_service_latency_seconds`, `event_fallback_outbox_total`,
   `event_fallback_processing_total`, and `transactions_applied_total` (Prometheus naming).
 - Logs are JSON and include timestamp, level, service, trace ID, span ID, message, and structured
   event identifiers. Credentials, full financial payloads, and metadata are not logged.

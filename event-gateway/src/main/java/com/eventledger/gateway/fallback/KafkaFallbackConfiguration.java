@@ -7,12 +7,14 @@ import org.springframework.context.annotation.Bean;
 import org.springframework.context.annotation.Configuration;
 import org.springframework.kafka.config.TopicBuilder;
 import org.springframework.kafka.listener.DefaultErrorHandler;
+import org.springframework.scheduling.annotation.EnableScheduling;
 import org.springframework.util.backoff.FixedBackOff;
 
 import java.time.Duration;
 
 /** Configures the Kafka retry topic and unlimited transient retries. */
 @Configuration
+@EnableScheduling
 @ConditionalOnProperty(prefix = "event-ledger.kafka", name = "enabled", havingValue = "true", matchIfMissing = true)
 public class KafkaFallbackConfiguration {
     @Bean

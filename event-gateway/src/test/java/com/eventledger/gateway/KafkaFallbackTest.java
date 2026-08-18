@@ -1,6 +1,7 @@
 package com.eventledger.gateway;
 
 import com.eventledger.gateway.repository.EventRepository;
+import com.eventledger.gateway.repository.FallbackOutboxRepository;
 import com.github.tomakehurst.wiremock.WireMockServer;
 import io.github.resilience4j.circuitbreaker.CircuitBreakerRegistry;
 import org.junit.jupiter.api.AfterAll;
@@ -27,7 +28,8 @@ import static org.springframework.test.web.servlet.result.MockMvcResultMatchers.
 /** Verifies queued processing through an embedded Kafka broker. */
 @SpringBootTest(properties = {
         "event-ledger.kafka.enabled=true",
-        "event-ledger.kafka.retry-interval=100ms"
+        "event-ledger.kafka.retry-interval=100ms",
+        "event-ledger.kafka.outbox.relay-interval=100ms"
 })
 @AutoConfigureMockMvc
 @EmbeddedKafka(kraft = true, partitions = 1, topics = "event-ledger.account-retry.v1",
@@ -51,11 +53,15 @@ class KafkaFallbackTest {
     private EventRepository eventRepository;
 
     @Autowired
+    private FallbackOutboxRepository outboxRepository;
+
+    @Autowired
     private CircuitBreakerRegistry circuitBreakerRegistry;
 
     @BeforeEach
     void resetState() {
         ACCOUNT_SERVICE.resetAll();
+        outboxRepository.deleteAll();
         eventRepository.deleteAll();
         circuitBreakerRegistry.circuitBreaker("accountService").reset();
     }
@@ -109,5 +115,13 @@ class KafkaFallbackTest {
         }
         org.assertj.core.api.Assertions.assertThat(processingStatus)
                 .contains("\"status\":\"APPLIED\"");
+        org.assertj.core.api.Assertions.assertThat(outboxRepository.findAll())
+                .singleElement()
+                .satisfies(message -> {
+                    org.assertj.core.api.Assertions.assertThat(message.getEventId())
+                            .isEqualTo("evt-kafka-recovery");
+                    org.assertj.core.api.Assertions.assertThat(message.getPublishedAt()).isNotNull();
+                    org.assertj.core.api.Assertions.assertThat(message.getAttemptCount()).isGreaterThanOrEqualTo(1);
+                });
     }
 }

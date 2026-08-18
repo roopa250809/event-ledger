@@ -30,7 +30,7 @@ paths:
             application/json:
               schema: { $ref: '#/components/schemas/EventResponse' }
         '202':
-          description: Account Service is unavailable and Kafka acknowledged the event for retry
+          description: Account Service is unavailable and the event was transactionally staged in the outbox
           content:
             application/json:
               schema: { $ref: '#/components/schemas/EventResponse' }
@@ -210,7 +210,7 @@ components:
         application/json:
           schema: { $ref: '#/components/schemas/ErrorResponse' }
     Unavailable:
-      description: Account Service and Kafka fallback are both unavailable
+      description: Account Service is unavailable and fallback staging is disabled or unavailable
       content:
         application/json:
           schema: { $ref: '#/components/schemas/ErrorResponse' }

@@ -51,8 +51,14 @@ event-ledger:
   kafka:
     enabled: ${KAFKA_FALLBACK_ENABLED:true}
     topic: ${KAFKA_FALLBACK_TOPIC:event-ledger.account-retry.v1}
-    publish-timeout: ${KAFKA_PUBLISH_TIMEOUT:3s}
     retry-interval: ${KAFKA_RETRY_INTERVAL:5s}
+    outbox:
+      relay-interval: ${OUTBOX_RELAY_INTERVAL:1s}
+      batch-size: ${OUTBOX_BATCH_SIZE:100}
+      publish-timeout: ${KAFKA_PUBLISH_TIMEOUT:3s}
+      publish-retry-interval: ${OUTBOX_PUBLISH_RETRY_INTERVAL:5s}
+      retention: ${OUTBOX_RETENTION:7d}
+      cleanup-interval: ${OUTBOX_CLEANUP_INTERVAL:1h}
   security:
     jwt:
       issuer: ${GATEWAY_JWT_ISSUER:event-ledger-local}
